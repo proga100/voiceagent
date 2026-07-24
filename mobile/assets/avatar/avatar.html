@@ -1,0 +1,16 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  /* Transparent so Flutter's background shows through the WebView. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  #avatar3d { width: 100%; height: 100%; }
+  #avatar3d canvas { display: block; }
+</style>
+
+<div id="avatar3d"></div>
+
+<!-- Alomat 3D avatar. ONE classic script (no ES modules, no fetches): Android
+     WebView serves this page from file:// where module/XHR loads are blocked
+     by CORS. The bundle embeds three.js + GLTFLoader + the GLB (base64).
+     Source: ../../avatar_src/entry.js — rebuild with avatar_src/build.sh. -->
+<script src="avatar-bundle.js"></script>

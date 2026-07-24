@@ -1,0 +1,425 @@
+"""Per-connection orchestrator entry point.
+
+Owns the WebSocket receive loop and translates frames to session calls: binary
+frames are mic audio; JSON frames are control events. Keeps the transport
+(FastAPI WebSocket) at the edge so the sessions stay transport-agnostic.
+
+Two session shapes are selected by ``USE_GEMINI_LIVE_AUDIO``:
+  * **Gemini Live** (default) — one realtime audio-in/audio-out session. The only
+    Google path that speaks Uzbek.
+  * **Staged** — STT (uz-UZ) -> Gemini text -> TTS (per ``TTS_PROVIDER``), the
+    same orchestrator as the Yandex pipeline.
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import json
+import logging
+import os
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+from app.config import Settings
+from app.voice.chat import ChatDoc, ChatGuide, ChatStore, build_guide_prompt_block
+from app.voice.chat.models import UZ, now_iso
+from app.voice.pipeline.memory import (
+    MemoryStore,
+    build_memory_context,
+    finalize_session_memory,
+    valid_device_id,
+)
+from app.voice.enrich import build_session_enrichment, get_tenant_crops
+from app.voice.pipeline.prompts import load_system_prompt
+from app.voice.pipeline.streaming_session import StreamingSession
+from app.voice.providers.factory import (
+    build_auth,
+    build_gpt,
+    build_stt,
+    build_translate,
+    build_tts,
+)
+from app.voice.providers.gemini_live import GeminiLiveSession
+
+logger = logging.getLogger("voice.agent")
+
+
+def _chat_turn_recorder(store: ChatStore, doc: ChatDoc, guide: ChatGuide):
+    """``on_turn_committed`` hook: only consult/symptom/general-phase turns
+    are recorded raw (contract §4.7) — plain guide-phase button steps are
+    captured deterministically by the guide itself (question/answer/photo
+    messages), never here. Every recorded farmer turn also feeds the guide's
+    sync trigger-detection / symptom-backstop hook (contract §4.10)."""
+
+    def _record(role: str, text: str) -> None:
+        try:
+            text = (text or "").strip()
+            if not text or not guide.records_transcript():
+                return
+            if role == "farmer":
+                guide.note_farmer_turn(text)
+            store.append_message(doc, role, "text", text)
+        except Exception:  # noqa: BLE001 — a recorder must never break the call
+            logger.exception("chat turn recording failed")
+
+    return _record
+
+
+def _build_session(websocket: WebSocket, settings: Settings, session_id: str):
+    auth = build_auth(settings)
+
+    async def send_json(payload: dict) -> None:
+        await websocket.send_json(payload)
+
+    async def send_bytes(data: bytes) -> None:
+        await websocket.send_bytes(data)
+
+    if settings.use_gemini_live_audio:
+        logger.info("voice agent: Gemini Live realtime path")
+        return GeminiLiveSession(
+            settings=settings,
+            auth=auth,
+            send_json=send_json,
+            send_bytes=send_bytes,
+            system_prompt=load_system_prompt(settings),
+            session_id=session_id,
+        )
+
+    logger.info("voice agent: staged STT->Gemini->TTS path")
+    return StreamingSession(
+        settings=settings,
+        stt=build_stt(settings, auth),
+        gpt=build_gpt(settings, auth),
+        tts=build_tts(settings, auth),
+        translate=build_translate(settings, auth),
+        send_json=send_json,
+        send_bytes=send_bytes,
+        session_id=session_id,
+    )
+
+
+async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: str) -> None:
+    session = _build_session(websocket, settings, session_id)
+
+    started = False
+    # Per-farmer memory (Alomat remembers users). Populated when session.start
+    # carries a valid user_id; None → memoryless session (old behaviour).
+    mem_store: MemoryStore | None = None
+    mem_device = ""
+    mem_key = ""
+    mem_profile = None
+    # Multichat (docs/multichat_contract.md). Populated when session.start
+    # carries a chat_id bound to an existing, owned chat; chat_guide is None
+    # whenever the guided flow itself could not be wired (chat_doc may still
+    # be set so teardown persists whatever the plain session produced).
+    chat_store: ChatStore | None = None
+    chat_doc: ChatDoc | None = None
+    chat_guide: ChatGuide | None = None
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+
+            if (data := message.get("bytes")) is not None:
+                if not started:
+                    # Allow audio before an explicit session.start for simple clients.
+                    await session.start()
+                    started = True
+                await session.on_audio_chunk(data)
+                continue
+
+            text = message.get("text")
+            if text is None:
+                continue
+            try:
+                event = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            etype = event.get("type")
+            if etype == "session.start":
+                if not started:
+                    session.set_input_sample_rate(event.get("sample_rate"))
+                    if hasattr(session, "set_voice"):
+                        session.set_voice(event.get("voice"))
+                    # Multichat: resolve chat_id -> stored ChatDoc BEFORE the
+                    # rest of the prompt is assembled (the guide policy/history
+                    # block and the enrichment crop fallback both need it). Any
+                    # failure -> plain session, exactly today's behaviour
+                    # (contract §8).
+                    user_id = event.get("user_id")
+                    if valid_device_id(user_id) and hasattr(session, "photo_user_id"):
+                        session.photo_user_id = user_id
+                    chat_id = (event.get("chat_id") or "").strip()
+                    if (
+                        getattr(settings, "chats_enabled", False)
+                        and chat_id
+                        and valid_device_id(user_id)
+                        and hasattr(session, "set_tool_extension")
+                    ):
+                        try:
+                            chat_store = ChatStore(settings)
+                            doc = chat_store.read(user_id, chat_id)
+                            if doc is not None and doc.user_id == user_id:
+                                chat_doc = doc
+                        except Exception:  # noqa: BLE001
+                            logger.exception("chat load failed — continuing without")
+                            chat_store = None
+                            chat_doc = None
+                    if chat_doc is not None and hasattr(session, "photo_chat_id"):
+                        session.photo_chat_id = chat_doc.id
+                    if chat_doc is not None and chat_store is not None:
+                        try:
+                            chat_guide = ChatGuide(
+                                settings, chat_store, chat_doc,
+                                send_json=websocket.send_json,
+                                speak_raw=session._speak_text,
+                                inject_context=getattr(
+                                    session, "inject_context", None
+                                ),
+                                finalize_case=getattr(
+                                    session, "finalize_from_guide", None
+                                ),
+                            )
+                            if not chat_doc.finished:
+                                session.set_tool_extension(
+                                    chat_guide.build_tools(), chat_guide.handle_tool
+                                )
+                            session.on_turn_committed = _chat_turn_recorder(
+                                chat_store, chat_doc, chat_guide
+                            )
+                            # Phase 2 (P2.3): "weed" chats use the weed
+                            # catalogue; disease_pest/general/"" use diseases.
+                            session.diagnosis_kind = (
+                                chat_doc.query_type or "disease_pest"
+                            )
+                            # Phase 3 (P3.6): speak the agronom-check offer
+                            # after the diagnosis read-aloud, chat-bound only.
+                            session.agronom_offer = bool(
+                                getattr(settings, "agronom_enabled", False)
+                            )
+                            guide_block = build_guide_prompt_block(chat_doc)
+                            if guide_block:
+                                session.set_memory(guide_block)
+                        except Exception:  # noqa: BLE001
+                            logger.exception(
+                                "chat guide setup failed — chat kept, guide disabled"
+                            )
+                            chat_guide = None
+                        # Profile-derived crop chips for «Qaysi ekin?» — the
+                        # farmer's REAL Growz crops shown next to «Ekinlar».
+                        # Source = settings.tenant_crops_source (mock JSON until
+                        # the tenant OTP-verify 500 is fixed, then /api/tenant/
+                        # crops). Independent of per-farmer memory; fail-open.
+                        if chat_guide is not None:
+                            try:
+                                profile_crops = await get_tenant_crops(
+                                    settings, user_id
+                                )
+                                if profile_crops:
+                                    chat_guide.set_memory_crops(
+                                        [c["name"] for c in profile_crops]
+                                    )
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "tenant crop chips failed — continuing without"
+                                )
+                    # Per-farmer memory: load the profile and extend the system
+                    # prompt BEFORE the Live connection opens. Any failure →
+                    # memoryless session, never a broken one.
+                    mem_kickoff = ""
+                    if (
+                        getattr(settings, "memory_enabled", False)
+                        and hasattr(session, "set_memory")
+                        and valid_device_id(user_id)
+                    ):
+                        try:
+                            mem_store = MemoryStore(settings)
+                            mem_device = user_id
+                            mem_key, mem_profile = mem_store.load_for_device(user_id)
+                            if (
+                                chat_guide is not None
+                                and mem_profile is not None
+                                and getattr(
+                                    settings, "memory_crop_chips_enabled", False
+                                )
+                            ):
+                                try:
+                                    chat_guide.set_memory_crops(list(mem_profile.crops))
+                                except Exception:  # noqa: BLE001
+                                    logger.exception(
+                                        "set_memory_crops failed — continuing without chips"
+                                    )
+                            block, mem_kickoff = build_memory_context(mem_profile)
+                            # While an unfinished guide owns the opening, DON'T
+                            # inject the memory facts/follow-up directive: it makes
+                            # Rais auto-answer the steps from what it remembers
+                            # (e.g. self-select the last crop) and free-form a
+                            # diagnosis, fighting the guided flow. The profile is
+                            # still loaded (teardown persists it); memory returns
+                            # for plain sessions and for the consult phase of an
+                            # already-finished chat.
+                            guide_owns_opening = (
+                                chat_guide is not None
+                                and chat_doc is not None
+                                and not chat_doc.finished
+                            )
+                            if not guide_owns_opening:
+                                session.set_memory(block)
+                        except Exception:  # noqa: BLE001
+                            logger.exception("memory load failed — continuing without")
+                            mem_store = None
+                    # Enrichment: today's date + local weather + the picked crop.
+                    # Appends to the system prompt like memory does; fully
+                    # fail-open so a slow weather API never blocks the call. A
+                    # resumed chat's own crop is the fallback when the client
+                    # sends none (a brand-new chat has no crop yet — the guide
+                    # picks it later).
+                    if getattr(settings, "enrich_enabled", False) and hasattr(
+                        session, "set_memory"
+                    ):
+                        try:
+                            crop_name = (event.get("crop_name") or "").strip()
+                            if not crop_name and chat_doc is not None:
+                                crop_name = chat_doc.crop_name
+                            enrich_block = await build_session_enrichment(
+                                settings, crop_name, event.get("lat"), event.get("lon"),
+                            )
+                            if enrich_block:
+                                session.set_memory(enrich_block)
+                        except Exception:  # noqa: BLE001
+                            logger.exception("enrichment failed — continuing without")
+                    await session.start()
+                    started = True
+                    if chat_guide is not None:
+                        # The guide speaks first (question or resume kickoff);
+                        # the memory kickoff is suppressed for chat-bound calls.
+                        try:
+                            await chat_guide.start()
+                        except Exception:  # noqa: BLE001
+                            logger.exception("chat guide start failed")
+                    elif mem_store is not None and mem_kickoff:
+                        # Alomat speaks first: onboarding intro or greeting.
+                        await session.speak_system(mem_kickoff)
+                    # Dev repro harness — inert unless DEBUG_AUTOPILOT=1.
+                    if os.environ.get("DEBUG_AUTOPILOT") == "1":
+                        from app.voice.pipeline.dev_autopilot import run_dev_autopilot
+                        asyncio.create_task(run_dev_autopilot(session))
+            elif etype == "user.interrupt":
+                await session.on_user_interrupt()
+            elif etype == "text.input" and hasattr(session, "on_user_text"):
+                # Typed farmer message — the quiet-environment / noisy-field
+                # fallback for voice. Answered with voice+text as usual.
+                txt = (event.get("text") or "").strip()
+                if txt and started:
+                    await session.on_user_text(txt[:500])
+            elif etype == "chat.answer" and chat_guide is not None:
+                if event.get("chat_id") == chat_guide.doc.id:
+                    await chat_guide.on_answer(
+                        event.get("step_id") or "",
+                        event.get("option_id") or "",
+                        event.get("value") or "",
+                    )
+            elif etype == "photo.upload" and hasattr(session, "on_photo"):
+                # Base64 JPEG/PNG from the client camera (binary frames stay mic-only).
+                accepted = await session.on_photo(
+                    event.get("photo_id"),
+                    base64.b64decode(event.get("data", "")),
+                    event.get("mime", "image/jpeg"),
+                    event.get("target_part"),
+                )
+                # Only count/advance the guide for photos the session actually
+                # stored — a rejected (non-plant/oversized/over-cap) upload must
+                # not inflate photos_collected toward the auto-finalize cap.
+                if chat_guide is not None and accepted:
+                    # The just-stored photo is the last in the session list; carry
+                    # its public URL onto the photo message for the agronom UI.
+                    photo_url = ""
+                    try:
+                        photos = getattr(session, "_photos", None)
+                        if photos:
+                            photo_url = photos[-1].stored_path or ""
+                    except Exception:  # noqa: BLE001 — URL is best-effort metadata
+                        photo_url = ""
+                    await chat_guide.on_photo_received(
+                        event.get("photo_id") or "", photo_url=photo_url,
+                    )
+            elif etype == "photo.quality" and hasattr(session, "on_photo_quality"):
+                await session.on_photo_quality(
+                    event.get("status", ""),
+                    event.get("reason", ""),
+                    event.get("target_part"),
+                )
+            elif etype == "camera.cancelled" and hasattr(session, "on_camera_cancelled"):
+                await session.on_camera_cancelled()
+                if chat_guide is not None:
+                    await chat_guide.on_camera_cancelled()
+            elif etype == "debug.log":
+                # Client audio telemetry (app built with AUDIO_DEBUG=true).
+                # print(): app loggers have no handler under uvicorn's config.
+                print(f"[client-debug] {event.get('msg')}", flush=True)
+            elif etype in ("audio.end", "session.end"):
+                if etype == "session.end":
+                    break
+    except WebSocketDisconnect:
+        logger.info("voice agent disconnected")
+    finally:
+        await session.close()
+        # Multichat teardown: fold the session's diagnosis (if any) into the
+        # chat, bump updated_at, save. Wrapped like memory finalize below —
+        # must never break socket teardown (contract §4.7, §8).
+        if chat_store is not None and chat_doc is not None:
+            try:
+                diag = getattr(session, "last_diagnosis", None)
+                if diag:
+                    chat_doc.last_diagnosis = diag
+                    text = (
+                        f"{UZ['diagPrefix']} {diag.get('disease', '')} "
+                        f"(ishonch: {diag.get('confidence', '')})"
+                    )
+                    # Phase 2 (P2.5): append the preparation names, only when
+                    # the diagnosis carried any.
+                    preps = diag.get("preparations") or []
+                    if preps:
+                        text += f" {UZ['prepPrefix']} " + ", ".join(preps)
+                    chat_store.append_message(chat_doc, "rais", "diagnosis", text)
+                else:
+                    chat_doc.updated_at = now_iso()
+                    chat_store.save(chat_doc)
+            except Exception:  # noqa: BLE001
+                logger.exception("chat finalize failed")
+            # Phase 3 (P3.5): kick off the AI second-opinion review IFF a
+            # request is pending and a diagnosis now exists. A NEW, separate
+            # try-block AFTER chat finalize (so an agronom bug can never
+            # break diagnosis persistence) and BEFORE memory finalize. Must
+            # read the FRESH doc — the in-memory one predates any mid-call
+            # agronom-request written to disk by the REST endpoint.
+            try:
+                from app.voice.agronom.review import maybe_start_mock_review
+
+                fresh = chat_store.read(chat_doc.user_id, chat_doc.id)
+                if fresh is not None:
+                    maybe_start_mock_review(settings, chat_store, fresh)
+            except Exception:  # noqa: BLE001
+                logger.exception("agronom teardown kickoff failed")
+        # Persist what this session taught us about the farmer. Runs AFTER
+        # close() (which cancels in-flight tasks) as a plain awaited call, so
+        # it cannot be cancelled by teardown; it never raises.
+        if mem_store is not None:
+            try:
+                await asyncio.wait_for(
+                    finalize_session_memory(
+                        settings,
+                        build_auth(settings),
+                        mem_store,
+                        mem_device,
+                        mem_key,
+                        mem_profile,
+                        session.transcript_text()
+                        if hasattr(session, "transcript_text") else "",
+                        getattr(session, "last_diagnosis", None),
+                    ),
+                    25.0,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("post-session memory update failed")

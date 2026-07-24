@@ -1,0 +1,68 @@
+{
+  "_note": "REAL single-planting DETAIL response (GET /api/tenant/plantings/{id}) captured from Growz, used as the mock until the tenant OTP-verify 500 is fixed. Note this detail shape carries region/district as id-only (no names) and the current task as activityTask.translations[].description (no short activityType.name); the list shape carried those names + farmer GPS. The parser handles BOTH.",
+  "data": [
+    {
+      "id": "ca6b17b7-b3cf-4036-99b1-3ed39a46dac8",
+      "createdAt": "2026-06-29T16:49:19.645Z",
+      "field": {
+        "id": "8dc41bac-3314-4d77-af42-0528916b83b3",
+        "name": "gwyw",
+        "area": "2654.43",
+        "region": {
+          "id": "e4029300-54a8-482e-8de7-60b2cbf6623e"
+        },
+        "district": {
+          "id": "9d5226ac-13ad-4665-80c4-32783c639267"
+        }
+      },
+      "farmer": {
+        "id": "2008e36f-aaef-49eb-8735-757417142299",
+        "fullname": "Jahongir ",
+        "phone": "+998943473476"
+      },
+      "crop": {
+        "id": "75412c1b-14e9-4c1c-b7de-eb74e4bf39b9",
+        "photo": {
+          "id": "7fbc7c5f-d0f4-4416-9d57-6ab86b5b34b5",
+          "link": "https://consortgroup-growz-application-prod.fra1.cdn.digitaloceanspaces.com/crops/qalampir.jpg"
+        },
+        "plantingStartMonth": 3,
+        "plantingStartDay": 19,
+        "growthPeriodFrom": 60,
+        "growthPeriodTo": 90,
+        "type": "CROP",
+        "translations": [
+          {
+            "id": "180884a6-828c-4183-8081-1f7192107a41",
+            "name": "Achchiq qalampir",
+            "description": "Achchiq garmdori mevasi, achchiq ziravor mahsulot sifatida turli ovqatlari, ayniqsa, sharq taomlari (Kavkaz va Markaziy Osiyo respublikalarida) tayyorlashda qo‘llanadi. Uni ovqatni iste’mol qilishdan oldin ziravor sifatida qo‘shish mumkin. Achchiq garmdori ishtahani ochadi, meda shirasining ajralishini kuchaytiradi, ovqat hazm bo‘lishini yaxshilaydi. "
+          }
+        ]
+      },
+      "area": 0.19,
+      "completedTaskCount": 0,
+      "totalTaskCount": 28,
+      "currentTask": {
+        "id": "df6a1f60-3807-4bb7-b8d9-652e7856f9b7",
+        "activityTask": {
+          "id": "23e8c835-2710-45dd-8401-327b1dc8f732",
+          "translations": [
+            {
+              "id": "969616af-6b3a-49f4-8bfb-9919b35b4004",
+              "language": "40d15260-93c9-4f92-a56a-c25a28e4b732",
+              "description": "Qalampirning ildiz tizimi baquvvat rivojlanishi va hosildorlikni oshirish uchun ekishdan oldin yerni sifatli tayyorlash talab etiladi. Tuproqning fosfor va kaliy bilan ta’minlanganlik darajasini inobatga olgan holda, sof holda 110 kg fosfor (P2O5) va 100 kg kaliy (K2O) o‘g‘itlarini qo‘llash tavsiya etiladi. Fosfor ildizning tez va chuqur rivojlanishiga xizmat qilsa, kaliy o‘simlikning kasalliklarga chidamliligini va meva sifatini oshiradi."
+            },
+            {
+              "id": "9680829f-ec45-4c69-a339-5e051c3cc5ec",
+              "language": "6157b497-cc07-420c-881f-fb316f5b3a38",
+              "description": "Қалампирнинг илдиз тизими бақувват ривожланиши ва ҳосилдорликни ошириш учун экишдан олдин ерни сифатли тайёрлаш талаб этилади."
+            }
+          ]
+        },
+        "startDate": "2025-10-20T05:00:00.000Z",
+        "endDate": "2025-11-19T05:00:00.000Z"
+      },
+      "plantedDate": "2026-03-19T00:00:00.000Z"
+    }
+  ]
+}

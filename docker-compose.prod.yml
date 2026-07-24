@@ -1,0 +1,32 @@
+# Production stack for voi.flance.info (Uzbek plant-doctor voice agent).
+#
+# Standalone — do NOT combine with docker-compose.yml (that one is dev-only:
+# bind-mount + --reload). Run on the server:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# The backend binds to 127.0.0.1:8014 only; the host's nginx (RunCloud)
+# terminates TLS, serves the static test client from ./frontend/test-client,
+# and proxies /ws/voice + /health to this container. Secrets come from .env
+# (never committed). Mirrors the yandex-nigora / google-azure-vagent stacks
+# already on the box.
+services:
+  backend:
+    build: ./backend
+    # Host 8014 (free on the box) -> container 8014. Must match the nginx vhost.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8014
+    ports:
+      - "127.0.0.1:8014:8014"
+    env_file:
+      - .env
+    # Per-farmer memory profiles (MEMORY_DIR=data/memory). Bind-mounted so
+    # Alomat's memory survives container rebuilds; deploy/update.sh excludes
+    # data/ from rsync so redeploys never touch it.
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8014/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

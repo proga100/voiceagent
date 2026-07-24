@@ -1,0 +1,79 @@
+name: plant_doctor
+description: "Alomat voice assistant for Uzbek farmers — thin realtime client (Phase 3: voice + transcript)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management — Notifier/AsyncNotifier based providers.
+  flutter_riverpod: ^2.6.1
+
+  # Single realtime transport to the FastAPI backend.
+  web_socket_channel: ^3.0.2
+
+  # Microphone capture as a raw PCM16 stream.
+  record: ^6.0.0
+
+  # Low-latency raw PCM playback of agent voice, fronted by our own JitterBuffer
+  # cushion. (A flutter_soloud swap was tried for its dedicated audio thread but
+  # its buffer-stream ended on drain on this device — total audio loss mid-turn
+  # — so we reverted to this verified-working engine.)
+  flutter_pcm_sound: ^3.1.5
+
+  # Configure the platform audio session (playAndRecord / voiceCommunication).
+  audio_session: ^0.1.21
+
+  # Runtime microphone (and later camera) permission requests.
+  permission_handler: ^11.4.0
+
+  # Stable ids for photos / sessions.
+  uuid: ^4.5.1
+
+  # Hosts the three.js 3D avatar (Phase 4) as a transparent WebView.
+  webview_flutter: ^4.10.0
+
+  # Phase 5 guided camera: live preview + still capture (enableAudio:false so
+  # the voice mic stream is never grabbed).
+  camera: ^0.11.0
+
+  # Phase 5 gallery fallback picker.
+  image_picker: ^1.1.0
+
+  # Phase 5: downscale/compress captured photos before upload.
+  flutter_image_compress: ^2.4.0
+
+  # Phase 5: on-device "is a plant in frame?" gate for the guided camera.
+  google_mlkit_image_labeling: ^0.13.0
+
+  # Stable per-install device id — keys Alomat's per-farmer memory.
+  shared_preferences: ^2.5.5
+
+  # Fetch the Growz crop catalogue for the pre-call crop picker (plain REST GET).
+  http: ^1.2.2
+
+  # Farmer GPS → local weather enrichment (best-effort; denied → Tashkent server-side).
+  geolocator: ^13.0.2
+
+dev_dependencies:
+  fake_async: ^1.3.1
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 3D avatar (Phase 4): avatar.html + one self-contained classic-script
+  # bundle (three.js + GLB embedded) -- sources live in avatar_src/,
+  # rebuild with avatar_src/build.sh.
+  assets:
+    - assets/avatar/

@@ -1,0 +1,1804 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Google Uzbek Voice Agent",
+    "description": "\nREST control surface + realtime WebSocket voice pipeline for the Uzbek\nfarming voice assistant (Gemini Live realtime, or staged Cloud STT uz-UZ →\nGemini → TTS).\n\n### Authentication\n* **REST** — device-scoped: endpoints take a `user_id` (stable per-install\n  device UUID) and never reveal other devices' data. No further auth here;\n  in production nginx fronts the service.\n* **`POST /chats/{chat_id}/agronom-review`** — expert-only, gated by the\n  `X-Agronom-Token` header.\n* **`WS /ws/voice`** — optional token gate: when `VOICE_API_TOKEN` is set the\n  client must connect with `?token=…` (browsers cannot set WS headers);\n  a bad/missing token closes the socket with app-level code **4401**.\n\n### WS `/ws/voice` — the voice protocol\nOpenAPI cannot model WebSockets, so the contract is documented here and every\nevent payload is included under **Schemas** below.\n\n* **Binary frames** — client → server: mic audio, PCM16 mono 16 kHz;\n  server → client: TTS audio, PCM16 48 kHz. Audio is never JSON.\n* **Text frames** — JSON control events discriminated by `type`:\n  * client → server: `SessionStart`, `AudioEnd`, `UserInterrupt`, `SessionEnd`, `PhotoUpload`, `PhotoQuality`, `CameraCancelled`, `ChatAnswer`\n  * server → client: `STTPartial`, `STTFinal`, `IntentPartial`, `LLMToken`, `TTSStarted`, `TTSFinished`, `AgentInterrupted`, `LatencyMetrics`, `ErrorEvent`, `ToolRequestPhoto`, `ToolCancelled`, `PhotoReceived`, `DiagnosisStarted`, `CaseDiagnosis`, `ChatQuestion`, `ChatStep`, `ChatState`\n* **Photos** are the one exception to \"binary = mic\": farmer photos ride the\n  JSON plane base64-encoded (`PhotoUpload`) so a still image is never confused\n  with a mic frame.\n* Some events (`usage`, the case-tool events) are emitted as raw dicts on the\n  wire; the models document the exact shapes both sides agreed on.\n* The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`/`ChatState`)\n  follow `docs/multichat_contract.md`.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Service status and active pipeline",
+        "description": "Which voice pipeline is live (Gemini Live vs staged STT→LLM→TTS),\nthe models behind it, and the token prices the client's cost panel\nneeds. No auth.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crops": {
+      "get": {
+        "tags": [
+          "crops"
+        ],
+        "summary": "Growz crop catalogue for the mobile picker",
+        "description": "Growz crop catalogue for the mobile picker (Uzbek names + real UUIDs).\n\nThe Growz API key stays server-side; the app only ever sees this list.\nFail-open: an empty ``data`` means Growz was unreachable, not an error.",
+        "operationId": "crops_crops_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CropsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "List a device's chats (newest first)",
+        "description": "Chat summaries for one device (contract §2.1). A corrupt store\nnever 500s — it degrades to an empty list.",
+        "operationId": "list_chats_chats_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Stable per-install device id (UUID) that scopes all chat data.",
+              "default": "",
+              "title": "User Id"
+            },
+            "description": "Stable per-install device id (UUID) that scopes all chat data."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Max summaries returned (clamped server-side).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Max summaries returned (clamped server-side)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Create an empty chat",
+        "description": "Create a chat for the device and return its summary (contract\n§2.2). The chat is bound to a voice session later via\n``SessionStart.chat_id`` on the WebSocket.",
+        "operationId": "create_chat_chats_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChatBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chat_id}": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Fetch one chat with full message history",
+        "description": "Full chat detail: messages, last diagnosis and agronom-review state\n(contract §2.3).",
+        "operationId": "get_chat_chats__chat_id__get",
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Stable per-install device id (UUID) that scopes all chat data.",
+              "default": "",
+              "title": "User Id"
+            },
+            "description": "Stable per-install device id (UUID) that scopes all chat data."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown chat — or owned by another device (never distinguished).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chat_id}/agronom-request": {
+      "post": {
+        "tags": [
+          "agronom"
+        ],
+        "summary": "Farmer requests a human-agronom review",
+        "description": "Mark the chat's diagnosis as pending expert review (contract P3.3).\nIdempotent: repeat calls while pending/done change nothing. May start\nthe mock AI second-opinion runner (P3.5) when configured.",
+        "operationId": "agronom_request_chats__chat_id__agronom_request_post",
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgronomRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chat not found, or the agronom feature is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chat_id}/agronom-review": {
+      "post": {
+        "tags": [
+          "agronom"
+        ],
+        "summary": "Expert submits the agronom verdict",
+        "description": "Land the human expert's verdict on a pending review (contract\nP3.4) and append the agronom message to the chat. Expert-only —\ngated by ``X-Agronom-Token``.",
+        "operationId": "agronom_review_submit_chats__chat_id__agronom_review_post",
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "x-agronom-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expert reviewer token (AGRONOM_REVIEW_TOKEN).",
+              "title": "X-Agronom-Token"
+            },
+            "description": "Expert reviewer token (AGRONOM_REVIEW_TOKEN)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgronomReviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user_id / verdict, or empty expert_summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chat not found, or the agronom feature is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The farmer never requested a review for this chat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgronomRequestBody": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Stable per-install device id (UUID) that scopes all chat data.",
+            "default": "",
+            "examples": [
+              "11111111-2222-3333-4444-555555555555"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AgronomRequestBody",
+        "description": "POST /chats/{chat_id}/agronom-request request body (contract P3.3)."
+      },
+      "AgronomReviewBody": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Stable per-install device id (UUID) that scopes all chat data.",
+            "default": "",
+            "examples": [
+              "11111111-2222-3333-4444-555555555555"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "title": "Verdict",
+            "description": "\"confirmed\" or \"adjusted\".",
+            "default": ""
+          },
+          "expert_summary": {
+            "type": "string",
+            "title": "Expert Summary",
+            "description": "Farmer-facing Uzbek summary, ≤600 chars. Required.",
+            "default": ""
+          },
+          "expert_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expert Notes",
+            "description": "Up to 6 notes, ≤300 chars each."
+          },
+          "adjusted_preparations": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Adjusted Preparations",
+            "description": "Frozen P2.1 Preparation shape; [] keeps the AI list."
+          }
+        },
+        "type": "object",
+        "title": "AgronomReviewBody",
+        "description": "POST /chats/{chat_id}/agronom-review request body (contract P3.4) —\nthe human expert's verdict, submitted with the X-Agronom-Token header."
+      },
+      "AgronomReviewOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "none | pending | done"
+          },
+          "requested_at": {
+            "type": "string",
+            "title": "Requested At"
+          },
+          "reviewed_at": {
+            "type": "string",
+            "title": "Reviewed At"
+          },
+          "is_mock": {
+            "type": "boolean",
+            "title": "Is Mock",
+            "description": "True = AI second-opinion stub (P3.5)."
+          },
+          "verdict": {
+            "type": "string",
+            "title": "Verdict",
+            "description": "\"\" | confirmed | adjusted"
+          },
+          "expert_summary": {
+            "type": "string",
+            "title": "Expert Summary"
+          },
+          "expert_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expert Notes"
+          },
+          "adjusted_preparations": {
+            "items": {
+              "$ref": "#/components/schemas/Preparation"
+            },
+            "type": "array",
+            "title": "Adjusted Preparations",
+            "description": "[] means the AI preparations list stands unchanged."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "requested_at",
+          "reviewed_at",
+          "is_mock",
+          "verdict",
+          "expert_summary",
+          "expert_notes",
+          "adjusted_preparations"
+        ],
+        "title": "AgronomReviewOut",
+        "description": "§7 agronom verification state, surfaced verbatim on summary + detail."
+      },
+      "ChatDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "query_type": {
+            "type": "string",
+            "title": "Query Type",
+            "description": "\"\" | disease_pest | weed | general"
+          },
+          "crop_id": {
+            "type": "string",
+            "title": "Crop Id"
+          },
+          "crop_name": {
+            "type": "string",
+            "title": "Crop Name"
+          },
+          "plant_part": {
+            "type": "string",
+            "title": "Plant Part"
+          },
+          "symptom_done": {
+            "type": "boolean",
+            "title": "Symptom Done"
+          },
+          "symptom_summary": {
+            "type": "string",
+            "title": "Symptom Summary"
+          },
+          "general_question": {
+            "type": "string",
+            "title": "General Question"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "finished": {
+            "type": "boolean",
+            "title": "Finished"
+          },
+          "last_diagnosis": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Diagnosis",
+            "description": "Raw DiagnosisResult dump + summary + preparations, or null."
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "agronom_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgronomReviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "query_type",
+          "crop_id",
+          "crop_name",
+          "plant_part",
+          "symptom_done",
+          "symptom_summary",
+          "general_question",
+          "created_at",
+          "updated_at",
+          "finished",
+          "last_diagnosis",
+          "messages",
+          "agronom_review"
+        ],
+        "title": "ChatDetail",
+        "description": "The single-chat fetch response shape (contract §2.3): summary fields\nplus ``messages`` and ``last_diagnosis`` (no message_count/last_message)."
+      },
+      "ChatDetailResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ChatDetailResponse"
+      },
+      "ChatListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSummary"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ChatListResponse"
+      },
+      "ChatMessageOut": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "farmer | rais | system | agronom"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "text | question | answer | photo | diagnosis | agronom_review"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "ts": {
+            "type": "string",
+            "title": "Ts"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url",
+            "description": "Public photo URL — only on kind == photo messages."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "kind",
+          "text",
+          "ts"
+        ],
+        "title": "ChatMessageOut",
+        "description": "One stored chat message. ``photo_url`` is present ONLY on photo\nmessages (kind == \"photo\") — omitted otherwise, never null."
+      },
+      "ChatSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "query_type": {
+            "type": "string",
+            "title": "Query Type",
+            "description": "\"\" | disease_pest | weed | general"
+          },
+          "crop_id": {
+            "type": "string",
+            "title": "Crop Id"
+          },
+          "crop_name": {
+            "type": "string",
+            "title": "Crop Name"
+          },
+          "plant_part": {
+            "type": "string",
+            "title": "Plant Part"
+          },
+          "symptom_done": {
+            "type": "boolean",
+            "title": "Symptom Done"
+          },
+          "symptom_summary": {
+            "type": "string",
+            "title": "Symptom Summary"
+          },
+          "general_question": {
+            "type": "string",
+            "title": "General Question"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "finished": {
+            "type": "boolean",
+            "title": "Finished"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatMessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agronom_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgronomReviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "query_type",
+          "crop_id",
+          "crop_name",
+          "plant_part",
+          "symptom_done",
+          "symptom_summary",
+          "general_question",
+          "created_at",
+          "updated_at",
+          "finished",
+          "message_count",
+          "last_message",
+          "agronom_review"
+        ],
+        "title": "ChatSummary",
+        "description": "The list/create response shape (contract §2.1/§2.2)."
+      },
+      "ChatSummaryResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ChatSummaryResponse"
+      },
+      "CreateChatBody": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Stable per-install device id (UUID) that scopes all chat data.",
+            "default": "",
+            "examples": [
+              "11111111-2222-3333-4444-555555555555"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "CreateChatBody",
+        "description": "POST /chats request body (contract §2.2)."
+      },
+      "Crop": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "Pomidor"
+            ]
+          },
+          "biology_name": {
+            "type": "string",
+            "title": "Biology Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "biology_name",
+          "category"
+        ],
+        "title": "Crop",
+        "description": "One Growz crop (Uzbek name + real Growz UUID)."
+      },
+      "CropsResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Crop"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Empty means Growz was unreachable, not an error (fail-open)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "CropsResponse"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorDetail",
+        "description": "FastAPI's HTTPException shape — all documented error statuses use it."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "examples": [
+              "ok"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "examples": [
+              "google"
+            ]
+          },
+          "pipeline": {
+            "type": "string",
+            "title": "Pipeline"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "\"Gemini Live (native audio)\" / \"Gemini Live (half-cascade)\" / \"Staged (TTS: …)\"."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "llm": {
+            "type": "string",
+            "title": "Llm"
+          },
+          "stt": {
+            "type": "string",
+            "title": "Stt"
+          },
+          "tts": {
+            "type": "string",
+            "title": "Tts"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "examples": [
+              "uz-UZ"
+            ]
+          },
+          "voice": {
+            "type": "string",
+            "title": "Voice"
+          },
+          "azure_brain_model": {
+            "type": "string",
+            "title": "Azure Brain Model",
+            "description": "The brain used when an Azure voice is selected (the client overrides the display for azure: voices)."
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/LivePricing"
+          },
+          "azure_pricing": {
+            "$ref": "#/components/schemas/LivePricing"
+          },
+          "azure_tts_price_per_1m_chars": {
+            "type": "number",
+            "title": "Azure Tts Price Per 1M Chars"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "provider",
+          "pipeline",
+          "mode",
+          "model",
+          "llm",
+          "stt",
+          "tts",
+          "language",
+          "voice",
+          "azure_brain_model",
+          "pricing",
+          "azure_pricing",
+          "azure_tts_price_per_1m_chars"
+        ],
+        "title": "HealthResponse"
+      },
+      "LivePricing": {
+        "properties": {
+          "textIn": {
+            "type": "number",
+            "title": "Textin"
+          },
+          "audioIn": {
+            "type": "number",
+            "title": "Audioin"
+          },
+          "textOut": {
+            "type": "number",
+            "title": "Textout"
+          },
+          "audioOut": {
+            "type": "number",
+            "title": "Audioout"
+          }
+        },
+        "type": "object",
+        "required": [
+          "textIn",
+          "audioIn",
+          "textOut",
+          "audioOut"
+        ],
+        "title": "LivePricing",
+        "description": "Gemini Live token prices, USD per 1M tokens."
+      },
+      "Preparation": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dose_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose Min"
+          },
+          "dose_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose Max"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "dose_min",
+          "dose_max",
+          "unit",
+          "type",
+          "description"
+        ],
+        "title": "Preparation",
+        "description": "Frozen P2.1 Agroapteka preparation shape (all six keys always present)."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "AgentInterrupted": {
+        "properties": {
+          "type": {
+            "const": "agent.interrupted",
+            "default": "agent.interrupted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "AgentInterrupted",
+        "type": "object"
+      },
+      "AudioEnd": {
+        "properties": {
+          "type": {
+            "const": "audio.end",
+            "default": "audio.end",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "AudioEnd",
+        "type": "object"
+      },
+      "CameraCancelled": {
+        "properties": {
+          "type": {
+            "const": "camera.cancelled",
+            "default": "camera.cancelled",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "CameraCancelled",
+        "type": "object"
+      },
+      "CaseDiagnosis": {
+        "properties": {
+          "type": {
+            "const": "case.diagnosis",
+            "default": "case.diagnosis",
+            "title": "Type",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "object"
+          },
+          "preparations": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Preparations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_id"
+        ],
+        "title": "CaseDiagnosis",
+        "type": "object"
+      },
+      "ChatAnswer": {
+        "properties": {
+          "type": {
+            "const": "chat.answer",
+            "default": "chat.answer",
+            "title": "Type",
+            "type": "string"
+          },
+          "chat_id": {
+            "default": "",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "step_id": {
+            "default": "",
+            "title": "Step Id",
+            "type": "string"
+          },
+          "option_id": {
+            "default": "",
+            "title": "Option Id",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "title": "ChatAnswer",
+        "type": "object"
+      },
+      "ChatOption": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ChatOption",
+        "type": "object"
+      },
+      "ChatQuestion": {
+        "properties": {
+          "type": {
+            "const": "chat.question",
+            "default": "chat.question",
+            "title": "Type",
+            "type": "string"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "kind": {
+            "default": "buttons",
+            "title": "Kind",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ChatOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chat_id",
+          "step_id",
+          "prompt"
+        ],
+        "title": "ChatQuestion",
+        "type": "object"
+      },
+      "ChatState": {
+        "properties": {
+          "type": {
+            "const": "chat.state",
+            "default": "chat.state",
+            "title": "Type",
+            "type": "string"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "selections": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Selections",
+            "type": "object"
+          }
+        },
+        "required": [
+          "chat_id",
+          "phase"
+        ],
+        "title": "ChatState",
+        "type": "object"
+      },
+      "ChatStep": {
+        "properties": {
+          "type": {
+            "const": "chat.step",
+            "default": "chat.step",
+            "title": "Type",
+            "type": "string"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "option_id": {
+            "default": "",
+            "title": "Option Id",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id",
+          "step_id"
+        ],
+        "title": "ChatStep",
+        "type": "object"
+      },
+      "DiagnosisStarted": {
+        "properties": {
+          "type": {
+            "const": "diagnosis.started",
+            "default": "diagnosis.started",
+            "title": "Type",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id"
+        ],
+        "title": "DiagnosisStarted",
+        "type": "object"
+      },
+      "ErrorEvent": {
+        "properties": {
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorEvent",
+        "type": "object"
+      },
+      "IntentPartial": {
+        "properties": {
+          "type": {
+            "const": "intent.partial",
+            "default": "intent.partial",
+            "title": "Type",
+            "type": "string"
+          },
+          "data": {
+            "title": "Data",
+            "type": "object"
+          }
+        },
+        "title": "IntentPartial",
+        "type": "object"
+      },
+      "LLMToken": {
+        "properties": {
+          "type": {
+            "const": "llm.token",
+            "default": "llm.token",
+            "title": "Type",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "LLMToken",
+        "type": "object"
+      },
+      "LatencyMetrics": {
+        "properties": {
+          "type": {
+            "const": "latency.metrics",
+            "default": "latency.metrics",
+            "title": "Type",
+            "type": "string"
+          },
+          "marks": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Marks",
+            "type": "object"
+          },
+          "deltas": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Deltas",
+            "type": "object"
+          }
+        },
+        "title": "LatencyMetrics",
+        "type": "object"
+      },
+      "PhotoQuality": {
+        "properties": {
+          "type": {
+            "const": "photo.quality",
+            "default": "photo.quality",
+            "title": "Type",
+            "type": "string"
+          },
+          "status": {
+            "default": "bad",
+            "title": "Status",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Part"
+          }
+        },
+        "title": "PhotoQuality",
+        "type": "object"
+      },
+      "PhotoReceived": {
+        "properties": {
+          "type": {
+            "const": "photo.received",
+            "default": "photo.received",
+            "title": "Type",
+            "type": "string"
+          },
+          "photo_id": {
+            "title": "Photo Id",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "photo_id",
+          "count"
+        ],
+        "title": "PhotoReceived",
+        "type": "object"
+      },
+      "PhotoUpload": {
+        "properties": {
+          "type": {
+            "const": "photo.upload",
+            "default": "photo.upload",
+            "title": "Type",
+            "type": "string"
+          },
+          "data": {
+            "title": "Data",
+            "type": "string"
+          },
+          "mime": {
+            "default": "image/jpeg",
+            "title": "Mime",
+            "type": "string"
+          },
+          "photo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Photo Id"
+          },
+          "target_part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Part"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "PhotoUpload",
+        "type": "object"
+      },
+      "STTFinal": {
+        "properties": {
+          "type": {
+            "const": "stt.final",
+            "default": "stt.final",
+            "title": "Type",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "STTFinal",
+        "type": "object"
+      },
+      "STTPartial": {
+        "properties": {
+          "type": {
+            "const": "stt.partial",
+            "default": "stt.partial",
+            "title": "Type",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "STTPartial",
+        "type": "object"
+      },
+      "SessionEnd": {
+        "properties": {
+          "type": {
+            "const": "session.end",
+            "default": "session.end",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "SessionEnd",
+        "type": "object"
+      },
+      "SessionStart": {
+        "properties": {
+          "type": {
+            "const": "session.start",
+            "default": "session.start",
+            "title": "Type",
+            "type": "string"
+          },
+          "sample_rate": {
+            "default": 16000,
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "language": {
+            "default": "uz-UZ",
+            "title": "Language",
+            "type": "string"
+          },
+          "voice": {
+            "default": "Aoede",
+            "title": "Voice",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string"
+          },
+          "crop_id": {
+            "default": "",
+            "title": "Crop Id",
+            "type": "string"
+          },
+          "crop_name": {
+            "default": "",
+            "title": "Crop Name",
+            "type": "string"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lon"
+          },
+          "chat_id": {
+            "default": "",
+            "title": "Chat Id",
+            "type": "string"
+          }
+        },
+        "title": "SessionStart",
+        "type": "object"
+      },
+      "TTSFinished": {
+        "properties": {
+          "type": {
+            "const": "tts.finished",
+            "default": "tts.finished",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "TTSFinished",
+        "type": "object"
+      },
+      "TTSStarted": {
+        "properties": {
+          "type": {
+            "const": "tts.started",
+            "default": "tts.started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "TTSStarted",
+        "type": "object"
+      },
+      "ToolCancelled": {
+        "properties": {
+          "type": {
+            "const": "tool.cancelled",
+            "default": "tool.cancelled",
+            "title": "Type",
+            "type": "string"
+          },
+          "call_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Call Ids",
+            "type": "array"
+          }
+        },
+        "title": "ToolCancelled",
+        "type": "object"
+      },
+      "ToolRequestPhoto": {
+        "properties": {
+          "type": {
+            "const": "tool.request_photo",
+            "default": "tool.request_photo",
+            "title": "Type",
+            "type": "string"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_part": {
+            "default": "leaf",
+            "title": "Target Part",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id"
+        ],
+        "title": "ToolRequestPhoto",
+        "type": "object"
+      },
+      "UserInterrupt": {
+        "properties": {
+          "type": {
+            "const": "user.interrupt",
+            "default": "user.interrupt",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "UserInterrupt",
+        "type": "object"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Service status: active pipeline, models and token pricing."
+    },
+    {
+      "name": "crops",
+      "description": "Growz crop catalogue proxy for the mobile picker (the Growz API key stays server-side)."
+    },
+    {
+      "name": "chats",
+      "description": "Multichat store (`docs/multichat_contract.md` §2). Device-id scoped — no auth beyond a valid `user_id` UUID."
+    },
+    {
+      "name": "agronom",
+      "description": "§7 human-agronom verification: farmer request + expert review submission."
+    }
+  ]
+}

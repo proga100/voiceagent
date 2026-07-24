@@ -1,0 +1,29 @@
+# Web / ASGI
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==13.1
+
+# Config / validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# Google: Gemini (text + Live API) and Cloud Speech-to-Text v2
+google-genai==1.21.1
+google-cloud-speech==2.27.0
+google-auth==2.38.0
+httpx==0.28.1
+
+# VAD / audio math (Silero VAD via ONNX, no torch)
+numpy==2.2.1
+onnxruntime==1.20.1
+
+# Image quality (deterministic photo checks)
+Pillow==11.1.0
+
+# Photo upload to DigitalOcean Spaces (S3-compatible)
+boto3==1.43.49
+
+# Tests
+pytest==8.3.4
+pytest-asyncio==0.25.2

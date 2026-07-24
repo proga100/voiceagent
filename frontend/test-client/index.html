@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Google Uzbek Voice Agent — Test Client</title>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 1.5rem; max-width: 760px; }
+  h1 { font-size: 1.15rem; }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .5rem 0; }
+  input, button { font: inherit; padding: .45rem .6rem; }
+  button { cursor: pointer; border-radius: 6px; border: 1px solid #888; background: #f5f5f5; }
+  button:disabled { opacity: .5; cursor: default; }
+  .vbtn { padding: .3rem .55rem; font-size: .85rem; }
+  .vbtn.active { background: #137333; color: #fff; border-color: #137333; }
+  #status { font-weight: 600; }
+  .ok { color: #137333; } .bad { color: #c5221f; } .warn { color: #b06000; }
+  .panel { border: 1px solid #ddd; border-radius: 8px; padding: .75rem; margin: .6rem 0; }
+  .label { font-size: .75rem; text-transform: uppercase; color: #666; letter-spacing: .04em; }
+  #partial { color: #555; min-height: 1.4em; }
+  #final { font-weight: 600; min-height: 1.4em; }
+  #llm { white-space: pre-wrap; min-height: 1.4em; }
+  #metrics, #usage { font-family: ui-monospace, monospace; font-size: .8rem; white-space: pre; }
+  #info { font-size: .85rem; }
+  #info table { border-collapse: collapse; }
+  #info td { padding: .15rem .6rem .15rem 0; vertical-align: top; }
+  #info td.k { color: #666; white-space: nowrap; }
+  #info td.v { font-family: ui-monospace, monospace; }
+  #log { font-family: ui-monospace, monospace; font-size: .72rem; color: #666;
+         max-height: 160px; overflow: auto; background: #fafafa; padding: .5rem; }
+
+  /* ---- Alomat 3D avatar (RPM-style GLB rendered with three.js) ---- */
+  #avatarPanel { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+  #avatar3d { width: 240px; height: 300px; border-radius: 14px; overflow: hidden;
+              background: linear-gradient(#eef3f8, #dde6ef);
+              box-shadow: 0 6px 16px rgba(0,0,0,.14);
+              display: flex; align-items: center; justify-content: center;
+              color: #8a99a8; font-size: .8rem; }
+  #avatar3d canvas { display: block; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+<h1>Google Uzbek Voice Agent — Test Client</h1>
+
+<div class="row">
+  <label>Server <input id="url" size="34" value="ws://127.0.0.1:8012/ws/voice" /></label>
+</div>
+<div class="row">
+  <button id="connect">Connect</button>
+  <button id="mic" disabled>🎤 Start mic</button>
+  <button id="interrupt" disabled>✋ Interrupt</button>
+  <span>Status: <span id="status" class="bad">disconnected</span></span>
+  <span id="echo" class="warn"></span>
+</div>
+
+<div class="row" id="voices"><span class="label" style="align-self:center">Voice:</span></div>
+
+<div class="panel" id="avatarPanel">
+  <div class="label">Alomat — 3D</div>
+  <div id="avatar3d">loading…</div>
+</div>
+<div class="panel"><div class="label">Pipeline / Model</div><div id="info">—</div></div>
+
+<div class="panel"><div class="label">STT partial</div><div id="partial"></div></div>
+<div class="panel"><div class="label">STT final</div><div id="final"></div></div>
+<div class="panel"><div class="label">LLM tokens</div><div id="llm"></div></div>
+<div class="panel"><div class="label">Latency</div><div id="metrics"></div></div>
+<div class="panel"><div class="label">Tokens · cost · $/min</div><div id="usage">—</div></div>
+<div class="panel" id="caseTools">
+  <div class="label">Case tools (test)</div>
+  <div class="row">
+    <input type="file" id="photoFile" accept="image/*" />
+    <button id="sendPhoto">Send photo</button>
+  </div>
+  <div class="row">
+    <button id="qualityBad">Quality: bad (blur)</button>
+    <button id="qualityGood">Quality: good</button>
+    <button id="cameraCancelled">Camera cancelled</button>
+  </div>
+  <pre id="diagnosis" style="font-family: ui-monospace, monospace; font-size: .72rem;
+       max-height: 160px; overflow: auto; white-space: pre-wrap; margin: .4rem 0 0;"></pre>
+</div>
+<div class="panel"><div class="label">Log</div><div id="log"></div></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let ws = null, micCtx = null, playCtx = null, micStream = null, workletNode = null;
+let playHead = 0, scheduled = [], pcmCarry = null;
+let mouthAnalyser = null, mouthBuf = null, mouthLevel = 0, mouthLoop = false; // avatar lip-sync
+const TTS_RATE = 24000; // Gemini Live native audio output sample rate
+const MIC_RATE = 16000; // STT input sample rate
+
+// ---- Token usage → cost (USD per 1M tokens). Auto-synced from /health to match
+// the active model (3.1-flash-live by default; native-audio 2.5 has cheaper text). ----
+let PRICE_PER_M = { audioIn: 3.00, audioOut: 12.00, textIn: 0.75, textOut: 4.50 };
+let usageStart = 0;     // ms timestamp the conversation clock started (for $/min)
+let lastUsage = null;   // latest cumulative usage event from the server
+let lastAzureChars = 0; // cumulative Azure TTS chars this session (Azure mode)
+let azurePricePerMChars = 16.0; // USD per 1M Azure characters (from /health)
+
+// Gemini Live prebuilt voices to A/B for the least Uzbek accent.
+const VOICES = ['Aoede','Charon','Kore','Zephyr','Puck','Fenrir','Leda','Orus','Callirrhoe','Despina'];
+// Azure native Uzbek voices (no accent): Gemini does STT+brain, Azure speaks.
+const AZURE_VOICES = [
+  { label: '🇺🇿 Azure Madina', value: 'azure:uz-UZ-MadinaNeural' },
+  { label: '🇺🇿 Azure Sardor', value: 'azure:uz-UZ-SardorNeural' },
+];
+let currentVoice = 'Aoede';
+let pendingReconnect = false, pendingMic = false;
+let lastCallId = null, lastTargetPart = 'leaf'; // remembered from tool.request_photo, for Case tools panel
+
+function buildVoiceButtons() {
+  const box = $('voices');
+  const add = (label, value) => {
+    const b = document.createElement('button');
+    b.className = 'vbtn' + (value === currentVoice ? ' active' : '');
+    b.textContent = label; b.dataset.voice = value;
+    b.onclick = () => applyVoice(value);
+    box.appendChild(b);
+  };
+  VOICES.forEach(v => add(v, v));
+  const sep = document.createElement('span');
+  sep.textContent = '|'; sep.style.color = '#bbb'; sep.style.alignSelf = 'center';
+  box.appendChild(sep);
+  AZURE_VOICES.forEach(a => add(a.label, a.value));
+}
+function highlightVoice() {
+  document.querySelectorAll('.vbtn').forEach(b =>
+    b.classList.toggle('active', b.dataset.voice === currentVoice));
+}
+// Voice is fixed at Live-connect time, so changing it reconnects (and resumes
+// the mic if it was running) to hear the new voice on the next turn.
+function applyVoice(v) {
+  currentVoice = v; highlightVoice(); fetchInfo();
+  log('voice → ' + v);
+  if (ws && ws.readyState <= 1) {
+    pendingReconnect = true; pendingMic = !!micStream;
+    ws.close();
+  }
+}
+
+function log(msg) {
+  const el = $('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(text, cls) { $('status').textContent = text; $('status').className = cls; }
+
+// Derive the http(s) base from the ws(s) URL and pull /health for live pipeline info.
+function healthUrl() {
+  try {
+    const u = new URL($('url').value);
+    u.protocol = (u.protocol === 'wss:') ? 'https:' : 'http:';
+    u.pathname = '/health'; u.search = '';
+    return u.toString();
+  } catch (_) { return null; }
+}
+async function fetchInfo() {
+  const url = healthUrl();
+  if (!url) return;
+  try {
+    const h = await (await fetch(url)).json();
+    const azure = currentVoice.startsWith('azure:');
+    // Sync token prices to the active model so the cost panel is accurate.
+    const pricing = azure ? (h.azure_pricing || h.pricing) : h.pricing;
+    if (pricing) PRICE_PER_M = pricing;
+    if (h.azure_tts_price_per_1m_chars) azurePricePerMChars = h.azure_tts_price_per_1m_chars;
+    // In Azure mode the brain is the half-cascade live model, not native-audio 2.5.
+    const brain = azure ? (h.azure_brain_model || h.model) : h.model;
+    const ttsRow = azure ? 'Azure Neural TTS (native uz)' : h.tts;
+    const sttRow = azure ? brain + ' (built-in)' : h.stt;
+    const voiceRow = azure ? currentVoice.split(':')[1] + ' (Azure)' : currentVoice;
+    const rows = [
+      ['Provider', h.provider], ['Mode', azure ? 'Gemini Live (STT+LLM) → Azure voice' : h.mode],
+      ['Model', brain], ['STT', sttRow], ['TTS', ttsRow],
+      ['Language', h.language], ['Voice', voiceRow],
+    ];
+    $('info').innerHTML = '<table>' + rows.map(
+      ([k, v]) => `<tr><td class="k">${k}</td><td class="v">${v ?? '—'}</td></tr>`
+    ).join('') + '</table>';
+  } catch (_) {
+    $('info').textContent = 'pipeline info unavailable (backend down?)';
+  }
+}
+
+$('connect').onclick = () => (ws ? disconnect() : connect());
+
+function connect() {
+  const url = $('url').value;
+  ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => {
+    setStatus('connected', 'ok');
+    $('connect').textContent = 'Disconnect';
+    $('mic').disabled = false; $('interrupt').disabled = false;
+    log('connected (voice: ' + currentVoice + ') — click Start mic');
+    usageStart = Date.now(); lastUsage = null; lastAzureChars = 0; renderUsage();
+    fetchInfo();
+    if (pendingMic) { pendingMic = false; startMic(); }
+  };
+  ws.onclose = (e) => {
+    setStatus('disconnected (' + e.code + ')', 'bad'); teardown();
+    if (pendingReconnect) { pendingReconnect = false; setTimeout(connect, 150); }
+  };
+  ws.onerror = () => log('! websocket error');
+  ws.onmessage = onMessage;
+}
+
+function disconnect() { if (ws) ws.close(); }
+
+function teardown() {
+  $('connect').textContent = 'Connect';
+  $('mic').disabled = true; $('interrupt').disabled = true; $('mic').textContent = '🎤 Start mic';
+  stopMic(); ws = null;
+}
+
+function onMessage(ev) {
+  if (typeof ev.data !== 'string') { playPcm(ev.data); return; } // binary = TTS audio (or echo)
+  const m = JSON.parse(ev.data);
+  switch (m.type) {
+    case 'ack': $('echo').textContent = 'echo: ' + m.echo; break;
+    case 'stt.partial': $('partial').textContent = m.text; break;
+    case 'stt.final': $('final').textContent = m.text; $('partial').textContent = ''; break;
+    case 'llm.token': $('llm').textContent += m.token; break;
+    case 'tts.started': $('llm').textContent = ''; break;
+    case 'tts.finished': log('← tts.finished'); break;
+    case 'agent.interrupted': stopPlayback(); log('← agent.interrupted'); break;
+    case 'latency.metrics': $('metrics').textContent = JSON.stringify(m.deltas, null, 2); break;
+    case 'usage':
+      lastUsage = m; renderUsage();
+      log('tokens total=' + (m.total || 0) + '  in=' + (m.prompt || 0) + '  out=' + (m.response || 0)); break;
+    case 'usage_azure': lastAzureChars = m.chars; renderUsage(); break;
+    case 'error': log('! error ' + m.code + ': ' + m.message); break;
+    case 'tool.request_photo':
+      lastCallId = m.call_id; lastTargetPart = m.target_part || lastTargetPart;
+      log('📷 TOOL request_photo: reason=' + m.reason + ' target_part=' + m.target_part); break;
+    case 'tool.cancelled': log('← tool.cancelled call_ids=' + JSON.stringify(m.call_ids)); break;
+    case 'photo.received': log('← photo.received photo_id=' + m.photo_id + ' count=' + m.count); break;
+    case 'diagnosis.started': log('← diagnosis.started case_id=' + m.case_id); break;
+    case 'case.diagnosis':
+      $('diagnosis').textContent = JSON.stringify(m.result, null, 2);
+      log('← case.diagnosis case_id=' + m.case_id + ' summary=' + m.summary); break;
+    default: log('← ' + ev.data);
+  }
+}
+
+// ---- Mic capture (AudioWorklet → Int16 PCM → binary WS) ----
+$('mic').onclick = async () => (micStream ? stopMic() : startMic());
+
+async function startMic() {
+  // Force the capture context to 16 kHz so the browser's high-quality resampler
+  // does the conversion (no aliasing). Falls back if the browser ignores the hint.
+  micCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: MIC_RATE });
+  await micCtx.audioWorklet.addModule('worklet.js');
+  micStream = await navigator.mediaDevices.getUserMedia({
+    // autoGainControl OFF: it amplifies quiet background noise. noiseSuppression ON.
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }
+  });
+  // Tell the server the ACTUAL capture rate so STT is configured to match,
+  // even if the browser ignored the 16k request.
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'session.start', sample_rate: micCtx.sampleRate, language: 'uz-UZ', voice: currentVoice }));
+  }
+  const src = micCtx.createMediaStreamSource(micStream);
+  workletNode = new AudioWorkletNode(micCtx, 'pcm-framer');
+  workletNode.port.onmessage = (e) => { if (ws && ws.readyState === 1) ws.send(e.data); };
+  src.connect(workletNode);
+  log('mic started @ ' + micCtx.sampleRate + ' Hz' + (micCtx.sampleRate !== MIC_RATE ? ' (browser ignored 16k; server will match)' : ''));
+  $('mic').textContent = '⏹ Stop mic';
+}
+
+function stopMic() {
+  if (workletNode) { workletNode.disconnect(); workletNode = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (micCtx) { micCtx.close(); micCtx = null; }
+  $('mic').textContent = '🎤 Start mic';
+}
+
+$('interrupt').onclick = () => { if (ws) ws.send(JSON.stringify({ type: 'user.interrupt' })); stopPlayback(); };
+
+// ---- Playback (binary Int16 PCM @ 48k → gapless WebAudio) ----
+function ensurePlaybackCtx() {
+  if (!playCtx) {
+    playCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Tap the output so the avatar's mouth tracks the live TTS loudness/spectrum.
+    mouthAnalyser = playCtx.createAnalyser();
+    mouthAnalyser.fftSize = 256;
+    mouthAnalyser.smoothingTimeConstant = 0.6;
+    mouthAnalyser.connect(playCtx.destination);
+    startMouthLoop();
+  }
+  return playCtx;
+}
+function playPcm(arrayBuf) {
+  const ctx = ensurePlaybackCtx();
+  // Keep 16-bit alignment across frames: a frame may carry an odd byte count
+  // (raw PCM split mid-sample). Prepend any leftover byte and hold the next.
+  let bytes = new Uint8Array(arrayBuf);
+  if (pcmCarry) { const j = new Uint8Array(pcmCarry.length + bytes.length); j.set(pcmCarry); j.set(bytes, pcmCarry.length); bytes = j; pcmCarry = null; }
+  if (bytes.length % 2) { pcmCarry = bytes.slice(bytes.length - 1); bytes = bytes.slice(0, bytes.length - 1); }
+  if (!bytes.length) return;
+  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length >> 1);
+  const f32 = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) f32[i] = pcm[i] / 0x8000;
+  const buf = ctx.createBuffer(1, f32.length, TTS_RATE);
+  buf.getChannelData(0).set(f32);
+  const node = ctx.createBufferSource();
+  node.buffer = buf; node.connect(mouthAnalyser || ctx.destination);
+  const now = ctx.currentTime;
+  if (playHead < now) playHead = now;
+  node.start(playHead);
+  playHead += buf.duration;
+  scheduled.push(node);
+  node.onended = () => { scheduled = scheduled.filter(n => n !== node); };
+}
+function stopPlayback() {
+  scheduled.forEach(n => { try { n.stop(); } catch (_) {} });
+  scheduled = []; playHead = 0; pcmCarry = null;
+  mouthLevel = 0; if (window.avatarSetOpen) window.avatarSetOpen(0); // snap the mouth shut on interrupt
+}
+
+// ---- Avatar lip-sync: live TTS loudness + spectrum → viseme drive ----
+function startMouthLoop() {
+  if (mouthLoop || !mouthAnalyser) return;
+  mouthLoop = true;
+  mouthBuf = new Uint8Array(mouthAnalyser.fftSize);
+  const freqBuf = new Uint8Array(mouthAnalyser.frequencyBinCount);
+  const tick = () => {
+    requestAnimationFrame(tick);
+    if (!mouthAnalyser) return;
+    mouthAnalyser.getByteTimeDomainData(mouthBuf);
+    let sum = 0;
+    for (let i = 0; i < mouthBuf.length; i++) { const v = (mouthBuf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / mouthBuf.length);
+    mouthLevel += (rms - mouthLevel) * 0.45;
+    const open = Math.min(1, mouthLevel * 5);
+    mouthAnalyser.getByteFrequencyData(freqBuf);
+    const n = freqBuf.length; let lo = 0, mi = 0, hi = 0;
+    for (let i = 0; i < n; i++) { const v = freqBuf[i]; if (i < n * 0.06) lo += v; else if (i < n * 0.30) mi += v; else hi += v; }
+    const tot = lo + mi + hi + 1e-6;
+    if (window.avatarDrive) window.avatarDrive(open, lo / tot, mi / tot, hi / tot);
+    else if (window.avatarSetOpen) window.avatarSetOpen(open);
+  };
+  tick();
+}
+
+// ---- Token usage / cost / per-minute display ----
+function usageCost(u) {
+  let pin = u.prompt_modalities || {}, pout = u.response_modalities || {};
+  let aIn = pin.AUDIO || 0, tIn = pin.TEXT || 0, aOut = pout.AUDIO || 0, tOut = pout.TEXT || 0;
+  if (!aIn && !tIn && u.prompt)  aIn = u.prompt;       // no modality detail → assume audio (Live default)
+  if (!aOut && !tOut && u.response) aOut = u.response;
+  return (aIn * PRICE_PER_M.audioIn + tIn * PRICE_PER_M.textIn
+        + aOut * PRICE_PER_M.audioOut + tOut * PRICE_PER_M.textOut) / 1e6;
+}
+function renderUsage() {
+  const el = $('usage'); if (!el) return;
+  if (!lastUsage && !lastAzureChars) {
+    el.textContent = usageStart ? 'waiting for first turn…' : '—'; return;
+  }
+  const u = lastUsage || {}, geminiCost = lastUsage ? usageCost(u) : 0;
+  const azure = currentVoice.startsWith('azure:');
+  const azureCost = azure ? (lastAzureChars / 1e6) * azurePricePerMChars : 0;
+  const cost = geminiCost + azureCost;
+  const mins = usageStart ? Math.max(1 / 60, (Date.now() - usageStart) / 60000) : 0;
+  const perMin = mins ? cost / mins : 0;
+  const pin = u.prompt_modalities || {}, pout = u.response_modalities || {};
+  const azureLine = azure
+    ? '\nazure tts    : ' + lastAzureChars + ' chars  $' + azureCost.toFixed(5) +
+      '  ($' + azurePricePerMChars + '/1M chars)'
+    : '';
+  const costLine = azure
+    ? 'cost so far  : $' + cost.toFixed(5) + '  (gemini $' + geminiCost.toFixed(5) +
+      ' + azure $' + azureCost.toFixed(5) + ')'
+    : 'cost so far  : $' + cost.toFixed(5);
+  el.textContent =
+    'tokens total : ' + (u.total || 0) + '\n' +
+    '  input      : ' + (u.prompt || 0) + '  (audio ' + (pin.AUDIO || 0) + ', text ' + (pin.TEXT || 0) + ')\n' +
+    '  output     : ' + (u.response || 0) + '  (audio ' + (pout.AUDIO || 0) + ', text ' + (pout.TEXT || 0) + ')\n' +
+    'prices/1M    : aIn $' + PRICE_PER_M.audioIn + ' aOut $' + PRICE_PER_M.audioOut +
+      ' tIn $' + PRICE_PER_M.textIn + ' tOut $' + PRICE_PER_M.textOut + azureLine + '\n' +
+    costLine + '\n' +
+    'rate         : $' + perMin.toFixed(4) + ' / min   (' + mins.toFixed(2) + ' min)';
+}
+setInterval(() => { if (usageStart) renderUsage(); }, 1000);  // keep $/min ticking even between turns
+
+// ---- Case tools (test): photo upload / quality flag / camera cancel → server ----
+function wsSendOrWarn(obj) {
+  if (!ws || ws.readyState !== 1) { log('! not connected — cannot send ' + obj.type); return; }
+  ws.send(JSON.stringify(obj));
+}
+$('sendPhoto').onclick = () => {
+  const f = $('photoFile').files[0];
+  if (!f) { log('! choose a photo file first'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const data = String(reader.result).split(',')[1] || '';
+    wsSendOrWarn({ type: 'photo.upload', photo_id: crypto.randomUUID(), mime: f.type || 'image/jpeg',
+      data, target_part: lastTargetPart, width: 0, height: 0, origin: 'gallery' });
+  };
+  reader.readAsDataURL(f);
+};
+$('qualityBad').onclick = () => wsSendOrWarn({ type: 'photo.quality', status: 'bad', reason: 'blur', target_part: lastTargetPart });
+$('qualityGood').onclick = () => wsSendOrWarn({ type: 'photo.quality', status: 'good', reason: null, target_part: lastTargetPart });
+$('cameraCancelled').onclick = () => wsSendOrWarn({ type: 'camera.cancelled', call_id: lastCallId || '' });
+
+// Build voice switcher + show pipeline/model info as soon as the page loads.
+buildVoiceButtons();
+fetchInfo();
+</script>
+
+<!-- ---- Alomat 3D avatar: loads the GLB, lip-syncs from the live TTS loudness/spectrum, blinks, idles ---- -->
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const mount = document.getElementById('avatar3d');
+mount.textContent = 'loading 3D…';
+const W = 240, H = 300;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(26, W / H, 0.01, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7b5, 2.2));
+const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(0.6, 1.4, 2); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-1.2, 0.4, 1); scene.add(fill);
+
+const morphMeshes = [];
+const bones = {}, base = {};
+let baseHipsY = null;
+let t = 0, blinkTimer = 2.5;
+let driveLoud = 0, dLow = 0.5, dMid = 0.3, dHigh = 0.2;   // targets from audio
+let cLoud = 0, cLow = 0.5, cMid = 0.3, cHigh = 0.2;        // smoothed
+const clamp = (x) => Math.max(0, Math.min(1, x));
+
+function setMorph(name, val) {
+  for (const m of morphMeshes) { const i = m.dict[name]; if (i !== undefined) m.mesh.morphTargetInfluences[i] = val; }
+}
+function addRot(name, dx, dy, dz) {
+  const b = bones[name], r = base[name];
+  if (b && r) { b.rotation.x = r.x + dx; b.rotation.y = r.y + dy; b.rotation.z = r.z + dz; }
+}
+// audio loop calls avatarDrive(loud, lowShare, midShare, highShare); avatarSetOpen = close/interrupt fallback
+window.avatarDrive = (loud, low, mid, high) => { driveLoud = clamp(loud); dLow = low; dMid = mid; dHigh = high; };
+window.avatarSetOpen = (v) => { driveLoud = clamp(v || 0); };
+window.__morph = (name) => { for (const m of morphMeshes) { const i = m.dict[name]; if (i !== undefined) return m.mesh.morphTargetInfluences[i]; } return null; };
+
+new GLTFLoader().load('nigora-3d.glb', (gltf) => {
+  const root = gltf.scene;
+  mount.textContent = ''; mount.appendChild(renderer.domElement);
+  scene.add(root);
+  root.traverse(o => {
+    if (o.morphTargetDictionary && o.morphTargetInfluences) morphMeshes.push({ mesh: o, dict: o.morphTargetDictionary });
+    if (o.isBone) bones[o.name] = o;
+  });
+  for (const nm of ['Head','Neck','Spine','Spine1','Spine2','Hips']) if (bones[nm]) base[nm] = bones[nm].rotation.clone();
+  if (bones['Hips']) baseHipsY = bones['Hips'].position.y;
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const c = box.getCenter(new THREE.Vector3());
+  const headY = box.max.y - size.y * 0.07;           // frame head + shoulders
+  cam.position.set(c.x, headY + 0.02, box.max.z + size.y * 0.62);
+  cam.lookAt(c.x, headY, c.z);
+  window.__avatarReady = true;
+}, undefined, (e) => { mount.textContent = '3D load failed'; console.error('GLB load error', e); });
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta()); t += dt;
+  cLoud += (driveLoud - cLoud) * Math.min(1, dt * 18);
+  const k = Math.min(1, dt * 14);
+  cLow += (dLow - cLow) * k; cMid += (dMid - cMid) * k; cHigh += (dHigh - cHigh) * k;
+  const L = cLoud;
+  setMorph('jawOpen',   L * 0.55);
+  setMorph('viseme_aa', clamp(L * (0.35 + cLow * 0.7)));
+  setMorph('viseme_O',  clamp(L * cLow * 0.5));
+  setMorph('viseme_U',  clamp(L * cLow * 0.25));
+  setMorph('viseme_E',  clamp(L * cMid * 0.95));
+  setMorph('viseme_I',  clamp(L * cHigh * 0.8));
+  setMorph('viseme_SS', clamp(L * cHigh * 0.3));
+  setMorph('mouthSmileLeft', 0.10 * (1 - L)); setMorph('mouthSmileRight', 0.10 * (1 - L)); // smile at rest
+  blinkTimer -= dt; let blink = 0;
+  if (blinkTimer <= 0) { const s = -blinkTimer; if (s < 0.15) blink = Math.sin((s / 0.15) * Math.PI); else blinkTimer = 2 + Math.random() * 3; }
+  setMorph('eyeBlinkLeft', blink); setMorph('eyeBlinkRight', blink);
+  const sway = Math.sin(t * 0.6), slow = Math.sin(t * 0.23), breath = Math.sin(t * 1.3);
+  addRot('Spine2', breath * 0.02, 0, sway * 0.01);
+  addRot('Spine1', breath * 0.01, slow * 0.02, 0);
+  addRot('Neck', 0, slow * 0.05, sway * 0.015);
+  addRot('Head', Math.sin(t * 0.45) * 0.02 + L * 0.05, Math.sin(t * 0.27) * 0.05 + (L > 0.1 ? Math.sin(t * 3.0) * L * 0.04 : 0), sway * 0.02);
+  if (bones['Hips'] && baseHipsY != null) bones['Hips'].position.y = baseHipsY + breath * 0.004;
+  renderer.render(scene, cam);
+}
+animate();
+</script>
+</body>
+</html>

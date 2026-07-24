@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv*/
+venv/
+.env
+*.onnx
+.pytest_cache/
+.DS_Store
+node_modules/
+*.log
+# Per-farmer memory profiles (runtime data, never committed).
+data/
+backend/data/
