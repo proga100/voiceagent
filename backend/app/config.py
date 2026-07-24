@@ -15,9 +15,17 @@ LOUDLY rather than silently substituting Russian/Turkish.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Backend workdir (voiceagent/backend). The storage-path fields below default to
+# values "relative to the backend workdir"; when the process runs from a
+# different CWD (e.g. the growz repo root after the Phase 4 in-process mount),
+# those relatives must be anchored here so they keep resolving to the same dirs.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -268,6 +276,23 @@ class Settings(BaseSettings):
     def stt_api_endpoint(self) -> str:
         """Regional Speech-to-Text endpoint (must match the chirp model region)."""
         return f"{self.google_stt_region}-speech.googleapis.com"
+
+    @model_validator(mode="after")
+    def _anchor_relative_paths(self) -> "Settings":
+        """Anchor CWD-relative storage paths to the backend dir.
+
+        These four fields default to values "relative to the backend workdir".
+        When the process runs from another CWD (the Phase 4 in-process mount runs
+        from the growz repo root), a bare relative like ``data/chats`` would
+        resolve against the wrong directory. Anchor any RELATIVE value to
+        ``_BACKEND_DIR``; absolute values (env overrides, tests' tmp_path dirs)
+        pass through unchanged.
+        """
+        for field in ("voice_agent_prompt_path", "photos_dir", "memory_dir", "chats_dir"):
+            value = getattr(self, field)
+            if value and not Path(value).is_absolute():
+                setattr(self, field, str(_BACKEND_DIR / value))
+        return self
 
 
 @lru_cache
