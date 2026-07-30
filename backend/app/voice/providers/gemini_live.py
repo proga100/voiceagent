@@ -139,6 +139,22 @@ def _is_remote_close(exc: BaseException) -> bool:
     return any(m in msg for m in ("deadline expired", "goaway", "1011", "1008"))
 
 
+def _azure_failure_is_permanent(exc: BaseException) -> bool:
+    """True when retrying Azure cannot possibly help.
+
+    A missing key (``AzureTTSUnavailable``) or a rejected one (401/403) stays
+    broken for the rest of the session, so we switch voices on the first hit
+    instead of burning a sentence per attempt. Throttling (429), 5xx and
+    network timeouts are transient — those get another chance. Matched by
+    exception type NAME (like ``_is_remote_close``) so this module needs no
+    import of the Azure provider or httpx.
+    """
+    if type(exc).__name__ == "AzureTTSUnavailable":
+        return True
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status in (401, 403)
+
+
 def _diagnosis_spoken(
     result: DiagnosisResult, preparations: list[dict], *, offer_agronom: bool = False
 ) -> str:
@@ -243,6 +259,7 @@ class GeminiLiveSession:
         self._azure_q: asyncio.Queue | None = None
         self._azure_task: asyncio.Task | None = None
         self._azure_chars = 0  # cumulative chars synthesized (for cost panel)
+        self._azure_failures = 0  # consecutive synth failures; reset on success
         self._gen = 0
         self._session = None
         self._cm = None
@@ -309,9 +326,15 @@ class GeminiLiveSession:
         Azure Neural TTS (native Uzbek); anything else is a Gemini Live timbre."""
         if not voice:
             return
-        if voice.startswith("azure:"):
+        if voice.startswith("azure:") and self._s.azure_speech_key:
             self._azure_mode = True
             self._azure_voice = voice.split(":", 1)[1] or "uz-UZ-SardorNeural"
+        elif voice.startswith("azure:"):
+            # Azure asked for but never configured: stay on the Gemini voice
+            # rather than starting a pipeline whose every sentence would 401.
+            logger.warning("azure voice %r requested but AZURE_SPEECH_KEY is "
+                           "unset — using the Gemini voice", voice)
+            self._azure_mode = False
         else:
             self._azure_mode = False
             self._voice = voice
@@ -671,6 +694,53 @@ class GeminiLiveSession:
                     break
         self._spoke = False
 
+    async def _fallback_to_gemini(self, reason: str) -> None:
+        """Azure died — finish the session in Gemini's own voice, seamlessly.
+
+        This is nearly free because the Live socket is ALREADY connected with
+        the AUDIO modality (see ``_live_config``): in Azure mode the receive
+        loop generates that audio and throws it away. Clearing ``_azure_mode``
+        just stops the discarding, so the very next frames reach the farmer —
+        no reconnect, no re-prompt, no lost conversation context.
+
+        The cost is the accent (Gemini approximates Uzbek where Azure is
+        native) plus the tail of the sentence Azure choked on. Both beat the
+        alternative, which is an agent that types but never speaks again.
+        """
+        if not self._azure_mode:
+            return
+        self._azure_mode = False
+        logger.warning("azure tts -> gemini voice fallback: %s", reason)
+        # Drain what Azure will now never speak. If the end-of-turn marker is
+        # among it, this turn is already over and nobody else will close it —
+        # so we owe the client the tts.finished the speak loop would have sent.
+        # Mid-turn there is no marker yet: Gemini keeps talking and the receive
+        # loop's turn_complete sends exactly one finish. Hence no duplicate.
+        owed_finish = False
+        if self._azure_q is not None:
+            while not self._azure_q.empty():
+                try:
+                    _stale_gen, sentence = self._azure_q.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if sentence is None:
+                    owed_finish = True
+        self._spoke = False
+        if owed_finish:
+            await self._send_json({"type": "tts.finished"})
+        # Older clients don't know this type and ignore it (forward compat),
+        # which is the right default: the voice changes, nothing looks broken.
+        await self._send_json(
+            {"type": "tts.fallback", "from": "azure", "to": "gemini",
+             "reason": reason}
+        )
+        if self._azure is not None:
+            try:
+                await self._azure.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+            self._azure = None
+
     async def _azure_speak_loop(self) -> None:
         """Consume queued sentences and voice them with Azure, in order. Runs in
         its own task so Azure latency never blocks reading the Gemini socket."""
@@ -700,8 +770,16 @@ class GeminiLiveSession:
                         if gen != self._gen:  # barge-in mid-sentence
                             break
                         await self._send_bytes(frame)
+                    self._azure_failures = 0  # a good sentence clears the streak
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("azure tts failed")
+                    self._azure_failures += 1
+                    give_up = _azure_failure_is_permanent(exc) or (
+                        self._azure_failures >= self._s.azure_tts_max_failures
+                    )
+                    if self._s.azure_tts_fallback_to_gemini and give_up:
+                        await self._fallback_to_gemini(str(exc))
+                        return  # nothing will be queued for Azure again
                     await self._send_json(
                         {"type": "error", "code": "azure_tts", "message": str(exc)}
                     )

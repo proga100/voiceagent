@@ -82,7 +82,9 @@ class Settings(BaseSettings):
     gemini_live_language: str = "uz-UZ"
     # Prebuilt Live HD voice (language-agnostic timbre; Uzbek comes from the
     # language code, not the voice name). NOT a Cloud TTS voice id.
-    gemini_live_voice: str = "Aoede"
+    # Male, to match the uz-UZ-SardorNeural voice this falls back from. Other
+    # male options: Puck, Fenrir, Orus (Aoede/Kore/Leda are female).
+    gemini_live_voice: str = "Charon"
 
     # ---- Transparent session resumption ----
     # Gemini Live enforces a session duration limit and closes the socket
@@ -112,12 +114,19 @@ class Settings(BaseSettings):
     # Speak the opening clause after this many chars (on the first comma) so the
     # first Azure audio starts sooner. Lower = faster first audio, choppier start.
     azure_first_clause_chars: int = 12
+    # When Azure TTS dies mid-session (revoked key, quota, outage), keep talking
+    # with Gemini Live's own audio instead of going silent. The tradeoff is the
+    # accent: Gemini approximates Uzbek, Azure is native. Off = surface the error.
+    azure_tts_fallback_to_gemini: bool = True
+    # Consecutive failures before giving up on Azure. A 401/403 (revoked/missing
+    # key) never retries — no number of attempts fixes a rejected credential.
+    azure_tts_max_failures: int = 2
 
     # ---- Generic audio (provider-neutral) ----
     audio_input_sample_rate_hz: int = 16000   # mic -> STT / Live input
     audio_output_sample_rate_hz: int = 24000  # Gemini Live native audio is 24 kHz
     # Generic "current voice" surfaced to the pipeline (filler bank, /health).
-    tts_voice: str = "Aoede"
+    tts_voice: str = "Charon"
 
     # ---- Optional translation bridge ----
     # Gemini handles Uzbek directly, so the bridge defaults OFF (unlike Yandex).

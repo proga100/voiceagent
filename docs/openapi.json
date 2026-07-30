@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Google Uzbek Voice Agent",
-    "description": "\nREST control surface + realtime WebSocket voice pipeline for the Uzbek\nfarming voice assistant (Gemini Live realtime, or staged Cloud STT uz-UZ →\nGemini → TTS).\n\n### Authentication\n* **REST** — device-scoped: endpoints take a `user_id` (stable per-install\n  device UUID) and never reveal other devices' data. No further auth here;\n  in production nginx fronts the service.\n* **`POST /chats/{chat_id}/agronom-review`** — expert-only, gated by the\n  `X-Agronom-Token` header.\n* **`WS /ws/voice`** — optional token gate: when `VOICE_API_TOKEN` is set the\n  client must connect with `?token=…` (browsers cannot set WS headers);\n  a bad/missing token closes the socket with app-level code **4401**.\n\n### WS `/ws/voice` — the voice protocol\nOpenAPI cannot model WebSockets, so the contract is documented here and every\nevent payload is included under **Schemas** below.\n\n* **Binary frames** — client → server: mic audio, PCM16 mono 16 kHz;\n  server → client: TTS audio, PCM16 48 kHz. Audio is never JSON.\n* **Text frames** — JSON control events discriminated by `type`:\n  * client → server: `SessionStart`, `AudioEnd`, `UserInterrupt`, `SessionEnd`, `PhotoUpload`, `PhotoQuality`, `CameraCancelled`, `ChatAnswer`\n  * server → client: `STTPartial`, `STTFinal`, `IntentPartial`, `LLMToken`, `TTSStarted`, `TTSFinished`, `AgentInterrupted`, `LatencyMetrics`, `ErrorEvent`, `ToolRequestPhoto`, `ToolCancelled`, `PhotoReceived`, `DiagnosisStarted`, `CaseDiagnosis`, `ChatQuestion`, `ChatStep`, `ChatState`\n* **Photos** are the one exception to \"binary = mic\": farmer photos ride the\n  JSON plane base64-encoded (`PhotoUpload`) so a still image is never confused\n  with a mic frame.\n* Some events (`usage`, the case-tool events) are emitted as raw dicts on the\n  wire; the models document the exact shapes both sides agreed on.\n* The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`/`ChatState`)\n  follow `docs/multichat_contract.md`.\n",
+    "description": "\nREST control surface + realtime WebSocket voice pipeline for the Uzbek\nfarming voice assistant (Gemini Live realtime, or staged Cloud STT uz-UZ →\nGemini → TTS).\n\n### Authentication\n* **REST** — device-scoped: endpoints take a `user_id` (stable per-install\n  device UUID) and never reveal other devices' data. No further auth here;\n  in production nginx fronts the service.\n* **`POST /chats/{chat_id}/agronom-review`** — expert-only, gated by the\n  `X-Agronom-Token` header.\n* **`WS /ws/voice`** — optional token gate: when `VOICE_API_TOKEN` is set the\n  client must connect with `?token=…` (browsers cannot set WS headers);\n  a bad/missing token closes the socket with app-level code **4401**.\n\n### WS `/ws/voice` — the voice protocol\nOpenAPI cannot model WebSockets, so the contract is documented here and every\nevent payload is included under **Schemas** below.\n\n* **Binary frames** — client → server: mic audio, PCM16 mono 16 kHz;\n  server → client: TTS audio, PCM16 48 kHz. Audio is never JSON.\n* **Text frames** — JSON control events discriminated by `type`:\n  * client → server: `SessionStart`, `AudioEnd`, `UserInterrupt`, `SessionEnd`, `PhotoUpload`, `PhotoQuality`, `CameraCancelled`, `ChatAnswer`\n  * server → client: `STTPartial`, `STTFinal`, `IntentPartial`, `LLMToken`, `TTSStarted`, `TTSFinished`, `TTSFallback`, `AgentInterrupted`, `LatencyMetrics`, `ErrorEvent`, `ToolRequestPhoto`, `ToolCancelled`, `PhotoReceived`, `DiagnosisStarted`, `CaseDiagnosis`, `ChatQuestion`, `ChatStep`, `ChatState`\n* **Photos** are the one exception to \"binary = mic\": farmer photos ride the\n  JSON plane base64-encoded (`PhotoUpload`) so a still image is never confused\n  with a mic frame.\n* Some events (`usage`, the case-tool events) are emitted as raw dicts on the\n  wire; the models document the exact shapes both sides agreed on.\n* The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`/`ChatState`)\n  follow `docs/multichat_contract.md`.\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -1695,6 +1695,36 @@
           }
         },
         "title": "SessionStart",
+        "type": "object"
+      },
+      "TTSFallback": {
+        "description": "The voice changed mid-session because Azure Neural TTS stopped working\n(revoked key, quota, outage). The reply keeps streaming as Gemini Live's\nown audio — accented Uzbek instead of native — so the session continues\nrather than going silent. Emitted once, not per sentence.",
+        "properties": {
+          "type": {
+            "const": "tts.fallback",
+            "default": "tts.fallback",
+            "title": "Type",
+            "type": "string"
+          },
+          "from": {
+            "const": "azure",
+            "default": "azure",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "const": "gemini",
+            "default": "gemini",
+            "title": "To",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "TTSFallback",
         "type": "object"
       },
       "TTSFinished": {
