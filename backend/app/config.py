@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Backend workdir (voiceagent/backend). The storage-path fields below default to
@@ -30,7 +30,10 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore",
+        # Fields carrying a validation_alias (gemini_api_key) must still be
+        # constructible by their Python name — tests and callers do that.
+        populate_by_name=True,
     )
 
     provider: Literal["google"] = "google"
@@ -41,7 +44,13 @@ class Settings(BaseSettings):
     google_project_id: str = ""
     # API key for the Gemini Developer API (google-genai). If unset, google-genai
     # falls back to ADC / Vertex via google_genai_use_vertexai.
-    gemini_api_key: str | None = None
+    # Accepts GOOGLE_GEMINI_API_KEY too: since the Phase 4 merge this process is
+    # shared with growz-ai, which names the very same key that way. Without the
+    # alias the env file would have to carry one value under two names.
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_GEMINI_API_KEY"),
+    )
     google_genai_use_vertexai: bool = False
 
     # ---- STT: Cloud Speech-to-Text v2 ----
