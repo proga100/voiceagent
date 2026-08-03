@@ -22,14 +22,31 @@ const String wsToken = String.fromEnvironment(
   defaultValue: 'change-me-dev-token',
 );
 
-/// HTTP(S) origin of the same backend, derived from [wsUrl] — the REST plane
-/// (e.g. `GET /crops`). `wss://host/ws/voice` → `https://host`,
-/// `ws://host:8012/ws/voice` → `http://host:8012`. No separate dart-define.
-String get httpBaseUrl {
-  final u = Uri.parse(wsUrl);
+/// HTTP(S) base of the same backend, derived from [wsUrl] — the REST plane
+/// (e.g. `GET /crops`). No separate dart-define.
+///
+/// Only the `/ws/voice` suffix is dropped; any prefix in front of it is KEPT,
+/// because the backend may be mounted under one. Since the Phase 4 merge the
+/// voice agent runs inside growz-ai under `/voice`, so its REST plane lives at
+/// `<host>/voice/chats`. Dropping the whole path would aim every REST call at
+/// growz-ai's own root, where `/chats` and `/crops` are 404.
+///
+/// `wss://voi.flance.info/ws/voice`        → `https://voi.flance.info`
+/// `wss://test-ai.growz.io/voice/ws/voice` → `https://test-ai.growz.io/voice`
+/// `ws://10.0.2.2:8012/ws/voice`           → `http://10.0.2.2:8012`
+String get httpBaseUrl => httpBaseFromWs(wsUrl);
+
+/// The derivation behind [httpBaseUrl], as a pure function so it is testable
+/// without rebuilding with a different `--dart-define`.
+String httpBaseFromWs(String ws) {
+  final u = Uri.parse(ws);
   final scheme = u.scheme == 'wss' ? 'https' : 'http';
   final port = u.hasPort ? ':${u.port}' : '';
-  return '$scheme://${u.host}$port';
+  const suffix = '/ws/voice';
+  final path = u.path.endsWith(suffix)
+      ? u.path.substring(0, u.path.length - suffix.length)
+      : u.path;
+  return '$scheme://${u.host}$port$path';
 }
 
 /// TTS voice id sent in `session.start`. `azure:<neural-voice>` picks the Azure
