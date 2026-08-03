@@ -124,10 +124,14 @@ class Settings(BaseSettings):
     # first Azure audio starts sooner. Lower = faster first audio, choppier start.
     azure_first_clause_chars: int = 12
     # Serve the built-in WebSocket tester page at <mount>/tester. It drives the
-    # whole guided flow from a browser and plays the agent's audio, so it is a
-    # debugging tool, not a product surface — OFF by default so it can never
-    # appear on a production host by accident. Turn it on per environment.
-    voice_tester_enabled: bool = False
+    # whole guided flow from a browser and plays the agent's audio.
+    #
+    # ON by default: the page has to be reachable on a fresh deploy without
+    # anyone remembering an extra variable — that is the whole point of shipping
+    # it with the code. It exposes no secret of its own (the WS token is typed
+    # in by hand) but it IS a debugging surface, so set
+    # VOICE_TESTER_ENABLED=false on any host where it should not be public.
+    voice_tester_enabled: bool = True
 
     # When Azure TTS dies mid-session (revoked key, quota, outage), keep talking
     # with Gemini Live's own audio instead of going silent. The tradeoff is the

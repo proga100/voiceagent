@@ -142,8 +142,10 @@ def create_app() -> FastAPI:
         colleague a file that reproduces the full cycle. This page is that file,
         served next to the socket it talks to.
 
-        Gated behind ``voice_tester_enabled`` (default off) and hidden from the
-        OpenAPI schema: it is a debugging tool, not a product surface.
+        Served by default so a fresh deploy needs no extra variable; set
+        ``VOICE_TESTER_ENABLED=false`` to take it off a host. Hidden from the
+        OpenAPI schema either way — it is a debugging tool, not a product
+        surface.
         """
         if not settings.voice_tester_enabled:
             raise HTTPException(status_code=404, detail="not found")
