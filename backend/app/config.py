@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     # Speak the opening clause after this many chars (on the first comma) so the
     # first Azure audio starts sooner. Lower = faster first audio, choppier start.
     azure_first_clause_chars: int = 12
+    # Serve the built-in WebSocket tester page at <mount>/tester. It drives the
+    # whole guided flow from a browser and plays the agent's audio, so it is a
+    # debugging tool, not a product surface — OFF by default so it can never
+    # appear on a production host by accident. Turn it on per environment.
+    voice_tester_enabled: bool = False
+
     # When Azure TTS dies mid-session (revoked key, quota, outage), keep talking
     # with Gemini Live's own audio instead of going silent. The tradeoff is the
     # accent: Gemini approximates Uzbek, Azure is native. Off = surface the error.
