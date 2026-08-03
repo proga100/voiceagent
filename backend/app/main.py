@@ -11,9 +11,12 @@ import logging
 import secrets
 import uuid
 
+from pathlib import Path
+
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
 
 from app import api_schemas
 from app.api_schemas import AgronomRequestBody, AgronomReviewBody, CreateChatBody
@@ -121,6 +124,35 @@ def create_app() -> FastAPI:
         from app.voice.enrich import get_crops
 
         return {"data": await get_crops(settings)}
+
+    @app.get(
+        "/tester",
+        tags=["debug"],
+        summary="Built-in WebSocket tester page",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    async def tester() -> HTMLResponse:
+        """A single self-contained page that drives the whole guided flow from a
+        browser: creates a chat, opens the socket, renders each ``chat.question``
+        as buttons, logs every payload and plays the agent's PCM back.
+
+        Exists because Postman cannot export WebSocket requests
+        (postmanlabs/postman-app-support#11252), so there is no way to hand a
+        colleague a file that reproduces the full cycle. This page is that file,
+        served next to the socket it talks to.
+
+        Gated behind ``voice_tester_enabled`` (default off) and hidden from the
+        OpenAPI schema: it is a debugging tool, not a product surface.
+        """
+        if not settings.voice_tester_enabled:
+            raise HTTPException(status_code=404, detail="not found")
+        page = Path(__file__).with_name("static") / "ws_tester.html"
+        try:
+            return HTMLResponse(page.read_text(encoding="utf-8"))
+        except OSError:
+            logger.exception("tester page missing at %s", page)
+            raise HTTPException(status_code=404, detail="not found")
 
     # ---- Multichat (docs/multichat_contract.md §2) -------------------------
     # Same trust level as /crops: device-id scoping, no auth beyond the URL
