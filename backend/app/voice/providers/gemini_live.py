@@ -288,6 +288,12 @@ class GeminiLiveSession:
         # Set externally (like diagnosis_kind) once user_id/chat_id are known.
         self.photo_user_id: str | None = None
         self.photo_chat_id: str | None = None
+        # Which plant part the model last asked for via request_photo. The
+        # client does not send target_part on photo.upload — the server resolves
+        # it here, falling back to the interview's plant_part (set by
+        # voice_agent) and finally to the whole plant.
+        self.last_requested_part: str | None = None
+        self.interview_plant_part: str | None = None
         # Per-farmer memory: transcript accumulated for the post-session
         # extraction call (FERMER:/ALOMAT: lines), and the diagnosis recorded
         # deterministically so memory never depends on the LLM re-reading it.
@@ -806,11 +812,18 @@ class GeminiLiveSession:
         name = getattr(fc, "name", "")
         args = dict(getattr(fc, "args", None) or {})
         if name == "request_photo":
+            part = args.get("target_part", "leaf")
+            # Remember what we asked for: the client no longer echoes target_part
+            # back on photo.upload, and the model may ask for a part that differs
+            # from the interview's plant_part ("now the root, then the whole
+            # plant"). Without this the mismatch check below would compare the
+            # photo against the wrong part.
+            self.last_requested_part = part
             await self._send_json({
                 "type": "tool.request_photo",
                 "call_id": fc.id,
                 "reason": args.get("reason", ""),
-                "target_part": args.get("target_part", "leaf"),
+                "target_part": part,
             })
             # The app shows a "Rasm olish" button; the farmer opens the camera
             # when ready, so the photo may arrive with a delay (or not at all).
@@ -1014,7 +1027,20 @@ class GeminiLiveSession:
         """Accept a farmer photo: enforce the size/count limits, keep it for the
         diagnosis call, and (when enabled) stream it into the Live session so the
         model comments on it in real time. Returns True only when the photo was
-        actually stored (so the guide counts accepted photos, not rejects)."""
+        actually stored (so the guide counts accepted photos, not rejects).
+
+        ``target_part`` is resolved server-side — the client stopped sending it.
+        Most specific first: what the model just asked for, then the part the
+        farmer picked in the interview, then the whole plant. The order matters
+        because a single session can collect several different shots ("general
+        view, then close-up, then the root") while plant_part stays one value.
+        """
+        target_part = (
+            target_part
+            or self.last_requested_part
+            or self.interview_plant_part
+            or "whole_plant"
+        )
         if not data:
             await self._send_json(
                 {"type": "error", "code": "photo", "message": "empty photo"}

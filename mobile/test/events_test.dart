@@ -614,7 +614,6 @@ void main() {
       const e = PhotoUploadRequest(
         photoId: 'p1',
         data: 'BASE64',
-        targetPart: 'leaf',
         width: 640,
         height: 480,
         origin: 'camera',
@@ -624,11 +623,17 @@ void main() {
         'photo_id': 'p1',
         'mime': 'image/jpeg',
         'data': 'BASE64',
-        'target_part': 'leaf',
         'width': 640,
         'height': 480,
         'origin': 'camera',
       });
+    });
+
+    test('photo.upload carries no target_part — the server resolves it', () {
+      // The app's guess could disagree with the part request_photo just asked
+      // for; the server knows both, so it decides.
+      const e = PhotoUploadRequest(photoId: 'p1', data: 'BASE64');
+      expect(e.toJson().containsKey('target_part'), isFalse);
     });
 
     test('photo.quality (Phase 5)', () {

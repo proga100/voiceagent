@@ -139,7 +139,6 @@ class _ConfirmOverlayState extends ConsumerState<ConfirmOverlay>
     final request = PhotoUploadRequest(
       photoId: _photoId,
       data: base64Encode(bytes),
-      targetPart: widget.targetPart,
       mime: 'image/jpeg',
       width: _width == 0 ? null : _width,
       height: _height == 0 ? null : _height,

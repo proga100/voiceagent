@@ -322,6 +322,14 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     )
             elif etype == "photo.upload" and hasattr(session, "on_photo"):
                 # Base64 JPEG/PNG from the client camera (binary frames stay mic-only).
+                # target_part is resolved server-side (the client stopped sending
+                # it). Refresh the interview's answer from the live chat doc —
+                # the guide mutates it in place, so plant_part answered mid-call
+                # is already here.
+                if chat_doc is not None and hasattr(
+                    session, "interview_plant_part"
+                ):
+                    session.interview_plant_part = chat_doc.plant_part or None
                 accepted = await session.on_photo(
                     event.get("photo_id"),
                     base64.b64decode(event.get("data", "")),

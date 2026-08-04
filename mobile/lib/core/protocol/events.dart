@@ -555,11 +555,15 @@ class TextInputRequest extends ClientEvent {
 
 /// Phase 5: uploads a captured photo (base64) for a plant part. Defined now so
 /// the protocol is complete; the camera UI that produces it lands in Phase 5.
+/// The plant part is NOT sent: the server resolves it from what the model last
+/// asked for via `tool.request_photo`, falling back to the interview's own
+/// `plant_part`. It knows both, and one session can collect several different
+/// shots while `plant_part` stays a single value — so echoing the app's guess
+/// back only risked disagreeing with the request the server actually made.
 class PhotoUploadRequest extends ClientEvent {
   const PhotoUploadRequest({
     required this.photoId,
     required this.data,
-    required this.targetPart,
     this.mime = 'image/jpeg',
     this.width,
     this.height,
@@ -570,7 +574,6 @@ class PhotoUploadRequest extends ClientEvent {
 
   /// Base64-encoded image bytes.
   final String data;
-  final String targetPart;
   final int? width;
   final int? height;
   final String? origin;
@@ -581,7 +584,6 @@ class PhotoUploadRequest extends ClientEvent {
     'photo_id': photoId,
     'mime': mime,
     'data': data,
-    'target_part': targetPart,
     if (width != null) 'width': width,
     if (height != null) 'height': height,
     if (origin != null) 'origin': origin,
