@@ -170,18 +170,16 @@ class ChatQuestion(BaseModel):
 
 
 class ChatStep(BaseModel):
+    """chat.state merged in (2026-08-05): every step carries ``phase`` (the
+    phase AFTER it) + a full ``selections`` snapshot. option_id == "" marks a
+    pure state SNAPSHOT (connect/resume, finish, degrade) — not an answer."""
+
     type: Literal["chat.step"] = "chat.step"
     chat_id: str
     step_id: str
     option_id: str = ""
     value: str = ""
     label: str = ""
-
-
-class ChatState(BaseModel):
-    type: Literal["chat.state"] = "chat.state"
-    chat_id: str
-    # v1: guide | consult
-    # v2 adds: symptom | general (docs/multichat_contract.md §1.2)
-    phase: str
+    # guide | crop_context | symptom | general | consult
+    phase: str = ""
     selections: dict[str, str] = Field(default_factory=dict)

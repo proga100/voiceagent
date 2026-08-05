@@ -225,25 +225,41 @@ void main() {
       expect(d.result.spokenSummary, 'Rasmda oʻsimlik koʻrinmadi.');
     });
 
-    test('chat.state parses phase and selections', () {
+    test('chat.state left the protocol -> unknown event', () {
+      // 2026-08-05: merged into chat.step (phase + selections ride on every
+      // step; option_id == '' marks a pure snapshot).
+      final e = ServerEvent.fromJson({'type': 'chat.state', 'phase': 'guide'});
+      expect(e, isA<UnknownEvent>());
+    });
+
+    test('chat.step carries phase and selections (chat.state merged in)', () {
       final e = ServerEvent.fromJson({
-        'type': 'chat.state',
+        'type': 'chat.step',
         'chat_id': 'c1',
-        'phase': 'guide',
-        'selections': {
-          'query_type': 'disease_pest',
-          'crop_id': '',
-          'crop_name': '',
-          'plant_part': '',
-          'photo_id': '',
-        },
-      });
-      expect(e, isA<ChatStateEvent>());
-      final s = e as ChatStateEvent;
-      expect(s.chatId, 'c1');
-      expect(s.phase, 'guide');
-      expect(s.selections['query_type'], 'disease_pest');
-      expect(s.selections['crop_id'], '');
+        'step_id': 'crop',
+        'option_id': 'uuid-pomidor',
+        'value': 'Pomidor',
+        'label': 'Pomidor',
+        'phase': 'crop_context',
+        'selections': {'query_type': 'disease_pest', 'crop_id': 'uuid-pomidor'},
+      }) as ChatStepAck;
+      expect(e.phase, 'crop_context');
+      expect(e.selections['crop_id'], 'uuid-pomidor');
+    });
+
+    test('chat.step snapshot: empty option_id, phase only', () {
+      final e = ServerEvent.fromJson({
+        'type': 'chat.step',
+        'chat_id': 'c1',
+        'step_id': 'crop_context',
+        'option_id': '',
+        'value': '',
+        'label': '',
+        'phase': 'crop_context',
+        'selections': {'crop_id': 'uuid-pomidor'},
+      }) as ChatStepAck;
+      expect(e.optionId, isEmpty);
+      expect(e.phase, 'crop_context');
     });
 
     test('chat.question parses step, prompt, kind and options', () {
@@ -274,40 +290,32 @@ void main() {
     // --- v2 (docs/multichat_contract.md §1.2/§1.3/§1.4): new phases, steps
     // and kinds are opaque strings to this layer — expect pure pass-through.
 
-    test('chat.state parses the v2 symptom phase', () {
-      final e = ServerEvent.fromJson({
-        'type': 'chat.state',
+    test('chat.step carries the v2 phases (symptom/general)', () {
+      final sym = ServerEvent.fromJson({
+        'type': 'chat.step',
         'chat_id': 'c1',
+        'step_id': 'plant_part',
+        'option_id': 'leaf',
+        'value': '',
+        'label': 'Bargida',
         'phase': 'symptom',
-        'selections': {
-          'query_type': 'disease_pest',
-          'crop_id': '6a91-growz-uuid',
-          'crop_name': 'Pomidor',
-          'plant_part': 'leaf',
-          'photo_id': '',
-        },
-      });
-      final s = e as ChatStateEvent;
-      expect(s.phase, 'symptom');
-      expect(s.selections['plant_part'], 'leaf');
-    });
+        'selections': {'plant_part': 'leaf'},
+      }) as ChatStepAck;
+      expect(sym.phase, 'symptom');
+      expect(sym.selections['plant_part'], 'leaf');
 
-    test('chat.state parses the v2 general phase', () {
-      final e = ServerEvent.fromJson({
-        'type': 'chat.state',
+      final gen = ServerEvent.fromJson({
+        'type': 'chat.step',
         'chat_id': 'c1',
+        'step_id': 'query_type',
+        'option_id': 'general',
+        'value': '',
+        'label': 'Umumiy savol berish',
         'phase': 'general',
-        'selections': {
-          'query_type': 'general',
-          'crop_id': '',
-          'crop_name': '',
-          'plant_part': '',
-          'photo_id': '',
-        },
-      });
-      final s = e as ChatStateEvent;
-      expect(s.phase, 'general');
-      expect(s.selections['query_type'], 'general');
+        'selections': {'query_type': 'general'},
+      }) as ChatStepAck;
+      expect(gen.phase, 'general');
+      expect(gen.selections['query_type'], 'general');
     });
 
     test('chat.question — query_type gains the third "general" option', () {

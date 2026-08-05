@@ -488,21 +488,35 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
           preparations: preparations,
           photos: photos,
         );
-      case ChatStateEvent(:final phase, :final selections):
-        ref.read(guidePhaseProvider.notifier).set(phase);
-        ref.read(guideSelectionsProvider.notifier).setAll(selections);
+      case ChatQuestion q:
+        ref.read(guideQuestionProvider.notifier).set(q);
+      case ChatStepAck(
+          :final stepId,
+          :final optionId,
+          :final label,
+          :final phase,
+          :final selections,
+        ):
+        // chat.state merged in: every step (and every option_id=='' snapshot)
+        // carries the phase + full selections.
+        if (phase.isNotEmpty) {
+          ref.read(guidePhaseProvider.notifier).set(phase);
+        }
+        if (selections.isNotEmpty) {
+          ref.read(guideSelectionsProvider.notifier).setAll(selections);
+        }
         if (phase == 'consult' || phase == 'crop_context') {
           // crop_context anketa sends NO chat.question (the question arrives
           // as voice + subtitles) — clear the bar so the previous step's
           // buttons don't linger.
           ref.read(guideQuestionProvider.notifier).clear();
         }
-      case ChatQuestion q:
-        ref.read(guideQuestionProvider.notifier).set(q);
-      case ChatStepAck(:final stepId, :final optionId, :final label):
-        ref.read(guideQuestionProvider.notifier).clear();
-        ref.read(guideSelectionsProvider.notifier).put(stepId, optionId);
-        if (label.isNotEmpty) transcript.addSystem('✓ $label');
+        if (optionId.isNotEmpty) {
+          // A real accepted answer (a snapshot renders nothing).
+          ref.read(guideQuestionProvider.notifier).clear();
+          ref.read(guideSelectionsProvider.notifier).put(stepId, optionId);
+          if (label.isNotEmpty) transcript.addSystem('✓ $label');
+        }
       case UnknownEvent():
         break;
     }

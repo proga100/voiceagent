@@ -29,7 +29,6 @@ from app.schemas import (
     CaseDiagnosis,
     ChatAnswer,
     ChatQuestion,
-    ChatState,
     ChatStep,
     DiagnosisStarted,
     ErrorEvent,
@@ -285,7 +284,6 @@ WS_SERVER_EVENTS: tuple[type[BaseModel], ...] = (
     CaseDiagnosis,
     ChatQuestion,
     ChatStep,
-    ChatState,
 )
 
 
@@ -344,6 +342,6 @@ event payload is included under **Schemas** below.
   document the exact shapes both sides agreed on. Token accounting (`usage`,
   `usage_azure`) and the Azure->Gemini voice swap (`tts.fallback`) were
   REMOVED from the socket on 2026-08-05 — all three are server-side logs now.
-* The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`/`ChatState`)
+* The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`)
   follow `docs/multichat_contract.md`.
 """

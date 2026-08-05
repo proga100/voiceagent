@@ -157,19 +157,25 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
     # Memory kickoff is suppressed; the guide speaks first instead.
     assert "speak_system" not in kinds
 
+    # chat.state merged into chat.step: connect emits a SNAPSHOT step
+    # (option_id == ""), transitions ride on the answer step itself, and
+    # _finish adds a consult snapshot after the closing answer.
     assert _sent_types(ws) == [
-        "chat.state", "chat.question",   # guide.start()
-        "chat.step", "chat.question",    # query_type -> crop
-        "chat.step", "chat.state",  # crop -> crop_context (anketa: chat.question yoʻq)
-        "chat.step", "chat.state", "chat.question",  # crop_context -> plant_part
-        "chat.step", "chat.state", "chat.question",  # plant_part -> symptom
-        "chat.step", "chat.state", "chat.question",  # symptom -> photo
-        "chat.step", "chat.question",    # photo.upload -> counted, bar re-shown
-        "chat.step", "chat.state",       # done_photos -> consult
+        "chat.step", "chat.question",   # guide.start(): snapshot + question
+        "chat.step", "chat.question",   # query_type -> crop
+        "chat.step",                    # crop -> crop_context (anketa: savol ovozda)
+        "chat.step", "chat.question",   # crop_context -> plant_part
+        "chat.step", "chat.question",   # plant_part -> symptom
+        "chat.step", "chat.question",   # symptom -> photo
+        "chat.step", "chat.question",   # photo.upload -> counted, bar re-shown
+        "chat.step", "chat.step",       # done_photos (consult) + finish snapshot
     ]
+    assert ws.sent_json[0]["option_id"] == ""      # connect snapshot
+    assert ws.sent_json[-1]["option_id"] == ""     # finish snapshot
+    assert ws.sent_json[-1]["phase"] == "consult"
     assert ws.sent_json[0]["phase"] == "guide"
     assert ws.sent_json[1]["step_id"] == "query_type"
-    assert _last(ws, "chat.state")["phase"] == "consult"
+    assert _last(ws, "chat.step")["phase"] == "consult"
 
     # The stored chat reflects every accepted selection.
     saved = store.read(DEV, doc.id)
@@ -204,7 +210,7 @@ async def test_resumed_finished_chat_skips_guide_and_records_consult_turns(
     kinds = [c[0] for c in session.calls]
     # A finished chat's guide never attaches the select_option tool.
     assert "set_tool_extension" not in kinds
-    assert _sent_types(ws) == ["chat.state"]
+    assert _sent_types(ws) == ["chat.step"]
     assert ws.sent_json[0]["phase"] == "consult"
     speak_raw = [c[1] for c in session.calls if c[0] == "speak_raw"]
     assert any("Fermer avvalgi suhbatga qaytdi" in s for s in speak_raw)
@@ -270,7 +276,7 @@ async def test_photo_upload_advances_guide_photo_step(monkeypatch, settings):
     # Multi-photo loop: one photo no longer finishes — the guide re-emits the
     # photo question, stays in the "guide" phase, and counts the photo.
     assert _last(ws, "chat.question")["step_id"] == "photo"
-    assert _last(ws, "chat.state")["phase"] == "guide"
+    assert _last(ws, "chat.step")["phase"] == "guide"
     saved = store.read(DEV, doc.id)
     assert saved.finished is False
     assert saved.photos_collected == 1
@@ -349,7 +355,11 @@ async def test_rejected_photo_does_not_advance_or_count_the_guide(monkeypatch, s
     await voice_agent.run_voice_agent(ws, settings, "t")
 
     assert ("photo", "photo-1", b"\x89PNG", "image/png", None) in session.calls
-    assert not [p for p in ws.sent_json if p["type"] == "chat.step"]
+    # Snapshot steps (option_id == "") are fine — no ACCEPTED answer steps.
+    assert not [
+        p for p in ws.sent_json
+        if p["type"] == "chat.step" and p.get("option_id")
+    ]
     saved = store.read(DEV, doc.id)
     assert saved.photos_collected == 0
     assert saved.finished is False

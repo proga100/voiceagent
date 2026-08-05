@@ -40,7 +40,7 @@ SpeakRaw = Callable[[str], Awaitable[None]]
 
 # ---------------------------------------------------------------------------
 # Phase mapping (contract §4.1) — pending-step id -> phase carried on
-# chat.state. A pending step id not in this table (there is none today)
+# the step/snapshot "phase" field. A pending step id not in this table (there is none today)
 # would default to "guide"; pending None means "consult".
 # ---------------------------------------------------------------------------
 
@@ -825,7 +825,7 @@ class ChatGuide:
         matrix)."""
         try:
             if self.doc.finished:
-                await self._emit_state("consult")
+                await self._emit_snapshot("consult")
                 await self._speak_raw(_SCRIPT_F.format(title=self.doc.title))
                 return
             d = self.doc
@@ -845,7 +845,7 @@ class ChatGuide:
                 await self._finish()
                 return
             phase = PHASE_FOR_STEP.get(step_id, "guide")
-            await self._emit_state(phase)
+            await self._emit_snapshot(phase)
             await self._emit_question(step_id)
             if step_id == "crop_context":
                 await self._speak_raw(_SCRIPT_CC_A.format(body=self._cc_body()))
@@ -1116,25 +1116,24 @@ class ChatGuide:
             d.plant_part = option_id
         # photo: no persisted field — the message + finish() below is enough.
         self._store_append(role="farmer", kind="answer", text=label)
-        await self._emit_step(step_id, option_id, value, label)
-
-        old_phase = PHASE_FOR_STEP.get(step_id, "guide")
         # photo is definitionally the last step, but nothing on ChatDoc marks
         # it "done" the way query_type/crop_id/plant_part do — pending_step()
         # would keep re-deriving "photo" until finished=True, so accepting a
         # photo-step answer always finishes directly instead of re-deriving.
-        # Photo-step answers (skip / done_photos) also fire the deterministic
-        # diagnosis before finishing.
         next_step = None if step_id == "photo" else self.pending_step()
+        new_phase = (
+            "consult" if next_step is None
+            else PHASE_FOR_STEP.get(next_step, "guide")
+        )
+        # The step itself announces the phase AFTER it (chat.state is merged).
+        await self._emit_step(step_id, option_id, value, label, phase=new_phase)
         if next_step is None:
-            if step_id == "photo":          # skip (0 photos) OR done_photos (any count)
+            # Photo-step answers also fire the deterministic diagnosis first.
+            if step_id == "photo":
                 await self._run_deterministic_finalize()
             await self._finish()
             return "Qabul qilindi. Yoʻriqli soʻrov yakunlandi."
 
-        new_phase = PHASE_FOR_STEP.get(next_step, "guide")
-        if new_phase != old_phase:
-            await self._emit_state(new_phase)
         await self._emit_question(next_step)
 
         if next_step == "crop_context":
@@ -1208,8 +1207,10 @@ class ChatGuide:
         d.crop_context_done = True
         label = UZ["optToSymptom"]
         self._store_append(role="farmer", kind="answer", text=label)
-        await self._emit_step("crop_context", "to_symptom", "", label)
-        await self._emit_state(PHASE_FOR_STEP["plant_part"])
+        await self._emit_step(
+            "crop_context", "to_symptom", "", label,
+            phase=PHASE_FOR_STEP["plant_part"],
+        )
         await self._emit_question("plant_part")
         q = STEPS["plant_part"]["prompt"]
         opts = self._opts_str("plant_part")
@@ -1234,8 +1235,9 @@ class ChatGuide:
             d.symptom_summary = summary[:300]
         label = UZ["optToPhoto"]
         self._store_append(role="farmer", kind="answer", text=label)
-        await self._emit_step("symptom", "to_photo", d.symptom_summary, label)
-        await self._emit_state("guide")
+        await self._emit_step(
+            "symptom", "to_photo", d.symptom_summary, label, phase="guide",
+        )
         await self._emit_question("photo")
         if backstop:
             await self._speak_raw(
@@ -1257,8 +1259,7 @@ class ChatGuide:
         d.query_type = "disease_pest"
         label = UZ["optSwitchDiag"]
         self._store_append(role="farmer", kind="answer", text=label)
-        await self._emit_step("diag_offer", "switch_diag", "", label)
-        await self._emit_state("guide")
+        await self._emit_step("diag_offer", "switch_diag", "", label, phase="guide")
         await self._emit_question("crop")
         q = STEPS["crop"]["prompt"]
         opts = self._opts_str("crop")
@@ -1297,7 +1298,7 @@ class ChatGuide:
     async def _finish(self) -> None:
         self.doc.finished = True
         self._save()
-        await self._emit_state("consult")
+        await self._emit_snapshot("consult")
         await self._speak_raw(self._consult_kickoff_script())
 
     def _consult_kickoff_script(self) -> str:
@@ -1337,16 +1338,6 @@ class ChatGuide:
             "photo_id": self._photo_id,
         }
 
-    async def _emit_state(self, phase: str) -> None:
-        await self._send_json(
-            {
-                "type": "chat.state",
-                "chat_id": self.doc.id,
-                "phase": phase,
-                "selections": self._selections(),
-            }
-        )
-
     def _prompt_for(self, step_id: str) -> str:
         """crop_context's prompt is the CURRENT anketa question — the fixed
         step title is only the fallback once all four are answered."""
@@ -1360,7 +1351,7 @@ class ChatGuide:
         # Team decision (2026-08-05): the crop_context anketa sends NO
         # chat.question at all — the question reaches the farmer as voice +
         # llm.token subtitles only. Clients clear the button bar on
-        # chat.state{phase: "crop_context"} instead.
+        # the chat.step "phase" field (crop_context) instead.
         if step_id == "crop_context":
             return
         step = STEPS[step_id]
@@ -1402,7 +1393,20 @@ class ChatGuide:
         await self._resend_question(step_id)
         self._store_append(role="rais", kind="question", text=self._prompt_for(step_id))
 
-    async def _emit_step(self, step_id: str, option_id: str, value: str, label: str) -> None:
+    def _phase_now(self) -> str:
+        if self.doc.finished:
+            return "consult"
+        p = self.pending_step()
+        return "consult" if p is None else PHASE_FOR_STEP.get(p, "guide")
+
+    async def _emit_step(
+        self, step_id: str, option_id: str, value: str, label: str,
+        *, phase: str | None = None,
+    ) -> None:
+        """chat.state is merged into chat.step (team decision 2026-08-05):
+        every step carries the phase AFTER it plus the selections snapshot.
+        ``phase`` overrides the derived value where the step itself causes
+        the transition (doc flags may lag the logical phase)."""
         await self._send_json(
             {
                 "type": "chat.step",
@@ -1411,8 +1415,16 @@ class ChatGuide:
                 "option_id": option_id,
                 "value": value,
                 "label": label,
+                "phase": phase if phase is not None else self._phase_now(),
+                "selections": self._selections(),
             }
         )
+
+    async def _emit_snapshot(self, phase: str) -> None:
+        """The former chat.state: a chat.step with an EMPTY option_id — a
+        state snapshot (connect/resume, finish, degrade), never an answer.
+        Clients: option_id == "" -> apply phase/selections, render nothing."""
+        await self._emit_step(self.pending_step() or "", "", "", "", phase=phase)
 
     # ---- storage + degrade ------------------------------------------------
 
@@ -1441,6 +1453,6 @@ class ChatGuide:
         except Exception:  # noqa: BLE001
             logger.exception("chat guide degrade save failed")
         try:
-            await self._emit_state("consult")
+            await self._emit_snapshot("consult")
         except Exception:  # noqa: BLE001
             logger.exception("chat guide degrade emit failed")

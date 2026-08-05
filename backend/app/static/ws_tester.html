@@ -672,9 +672,11 @@ $('bConn').onclick = () => {
       setLive('subBot', false);
     }
     if (m.type === 'chat.question') renderQuestion(m);
-    if (m.type === 'chat.state' && m.phase === 'consult')
+    // chat.state слит в chat.step: фаза приходит в каждом шаге/снимке
+    // (option_id === '' — снимок состояния, не ответ).
+    if (m.type === 'chat.step' && m.phase === 'consult')
       $('qbox').innerHTML = '<p class="hint">Опрос завершён — фаза consult, свободная консультация.</p>';
-    if (m.type === 'chat.state' && m.phase === 'crop_context')
+    if (m.type === 'chat.step' && m.phase === 'crop_context')
       // Anketa uchun chat.question KELMAYDI — savol ovoz + subtitrda.
       $('qbox').innerHTML = '<div class="sid">crop_context · anketa</div>'
         + '<p class="hint">Savol ovozda va 🗣 subtitrda. Javobni 🎤 mikrofon '

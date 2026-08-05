@@ -61,13 +61,6 @@ sealed class ServerEvent {
         return DiagnosisStarted(caseId: _str(json['case_id']));
       case 'case.diagnosis':
         return CaseDiagnosis.fromJson(json);
-      case 'chat.state':
-        return ChatStateEvent(
-          chatId: _str(json['chat_id']),
-          phase: _str(json['phase']),
-          selections: _map(json['selections'])
-              .map((k, v) => MapEntry(k, v?.toString() ?? '')),
-        );
       case 'chat.question':
         return ChatQuestion(
           chatId: _str(json['chat_id']),
@@ -88,6 +81,9 @@ sealed class ServerEvent {
           optionId: _str(json['option_id']),
           value: _str(json['value']),
           label: _str(json['label']),
+          phase: _str(json['phase']),
+          selections: _map(json['selections'])
+              .map((k, v) => MapEntry(k, v?.toString() ?? '')),
         );
       default:
         return UnknownEvent(type ?? '', json);
@@ -200,28 +196,6 @@ class CaseDiagnosis extends ServerEvent {
   );
 }
 
-/// Guided-flow phase + accumulated selections. Emitted right after the Live
-/// session is up for a chat-bound session, on every phase transition, and
-/// when the guide degrades on error.
-class ChatStateEvent extends ServerEvent {
-  const ChatStateEvent({
-    required this.chatId,
-    required this.phase,
-    required this.selections,
-  });
-  final String chatId;
-
-  /// `guide` | `symptom` | `general` | `consult` (v2,
-  /// `docs/multichat_contract.md` §1.2). Only `consult` hides the guided
-  /// options bar / clears the pending question; `symptom` and `general` are
-  /// stored as-is and simply drive nothing else client-side (forward
-  /// compatible with a v1 app, which stores the string harmlessly too).
-  final String phase;
-
-  /// Selection keys are always present, `""` when not yet made.
-  final Map<String, String> selections;
-}
-
 /// One tappable option of a pending [ChatQuestion].
 class ChatOption {
   const ChatOption({required this.id, required this.label});
@@ -260,6 +234,9 @@ class ChatQuestion extends ServerEvent {
 /// whether it arrived by tap (`chat.answer`) or by voice (the server-side
 /// `select_option` tool). The client clears the pending question and shows a
 /// compact `✓ <label>` confirmation chip.
+/// chat.state merged in (2026-08-05): every step carries [phase] (the phase
+/// AFTER it) + a full [selections] snapshot. An empty [optionId] marks a pure
+/// state SNAPSHOT (connect/resume, finish, degrade) — not an answer.
 class ChatStepAck extends ServerEvent {
   const ChatStepAck({
     required this.chatId,
@@ -267,12 +244,16 @@ class ChatStepAck extends ServerEvent {
     required this.optionId,
     required this.value,
     required this.label,
+    this.phase = '',
+    this.selections = const {},
   });
   final String chatId;
   final String stepId;
   final String optionId;
   final String value;
   final String label;
+  final String phase;
+  final Map<String, String> selections;
 }
 
 /// Any frame with an unrecognised `type`. Ignored gracefully by consumers.

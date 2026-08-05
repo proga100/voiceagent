@@ -164,15 +164,19 @@ async def test_start_new_chat_emits_state_question_and_script_a(store):
     doc = new_chat_doc(DEV)
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.sent_types() == ["chat.state", "chat.question"]
+    assert rec.sent_types() == ["chat.step", "chat.question"]
     state = rec.sent[0]
-    assert state == {
-        "type": "chat.state", "chat_id": doc.id, "phase": "guide",
+    # chat.state merged into chat.step: the connect snapshot is a chat.step
+    # with an EMPTY option_id carrying phase + selections.
+    assert state["type"] == "chat.step"
+    assert state["option_id"] == ""
+    assert {
+        "chat_id": doc.id, "phase": "guide",
         "selections": {
             "query_type": "", "crop_id": "", "crop_name": "",
             "plant_part": "", "photo_id": "",
         },
-    }
+    }.items() <= state.items()
     question = rec.sent[1]
     assert question["step_id"] == "query_type"
     assert question["kind"] == "buttons"
@@ -195,7 +199,7 @@ async def test_start_resumed_finished_chat_emits_consult_and_script_f(store):
     doc.title = "Pomidor — kasallik"
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.sent_types() == ["chat.state"]
+    assert rec.sent_types() == ["chat.step"]
     assert rec.sent[0]["phase"] == "consult"
     assert len(rec.spoken) == 1
     assert rec.spoken[0].startswith("[TIZIM] Fermer avvalgi suhbatga qaytdi.")
@@ -348,7 +352,7 @@ async def test_crop_context_prompt_for_unsaved_crop(store):
     await guide.on_answer("crop", "uuid-pomidor", "Pomidor")  # not in the mock -> crop_context
     assert doc.crop_in_profile is False
     assert guide.pending_step() == "crop_context"
-    assert rec.sent[-1]["type"] == "chat.state"
+    assert rec.sent[-1]["type"] == "chat.step"
     assert rec.sent[-1]["phase"] == "crop_context"
     # Team decision: the anketa emits NO chat.question — voice/subtitles only.
     assert not [
@@ -407,10 +411,10 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     await guide.on_answer("query_type", "disease_pest", "")
     assert doc.query_type == "disease_pest"
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "query_type",
         "option_id": "disease_pest", "value": "", "label": "Kasalliklar va zararkunandalar",
-    }
+    }.items()
     assert rec.last("chat.question")["step_id"] == "crop"
     assert rec.spoken[-1].startswith("[TIZIM] Fermer tugma orqali")
     assert "[SAVOL step=crop]" in rec.spoken[-1]
@@ -421,7 +425,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     # "Pomidor" is not in the (mock) Growz profile -> crop routes DIRECTLY
     # into the §1.3 crop_context phase (BEFORE plant_part).
     assert doc.crop_in_profile is False
-    assert rec.sent_types()[-2:] == ["chat.step", "chat.state"]
+    assert rec.sent_types()[-1] == "chat.step"
     assert rec.sent[-1]["phase"] == "crop_context"
     # anketa chat.question yubormaydi — savol faqat ovozda
     assert rec.spoken[-1].startswith("[TIZIM] Fermer tugma orqali «Pomidor»")
@@ -431,7 +435,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     assert doc.crop_context_done is True
     # crop_context -> plant_part (the FIRST §2 question), mirroring how
     # switch_to_diagnostic re-enters at the crop step.
-    assert rec.sent_types()[-2:] == ["chat.state", "chat.question"]
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "guide"
     assert rec.last("chat.question")["step_id"] == "plant_part"
     assert rec.spoken[-1].startswith("[TIZIM] Fermer tugma orqali «Belgilarga oʻtish»")
@@ -439,7 +443,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
 
     await guide.on_answer("plant_part", "leaf", "")
     assert doc.plant_part == "leaf"
-    assert rec.sent_types()[-2:] == ["chat.state", "chat.question"]
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "symptom"
     assert rec.last("chat.question")["step_id"] == "symptom"
     assert rec.last("chat.question")["kind"] == "symptom"
@@ -449,11 +453,11 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     await guide.on_answer("symptom", "to_photo", "")
     assert doc.symptom_done is True
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "symptom",
         "option_id": "to_photo", "value": "", "label": "Rasmga oʻtish",
-    }
-    assert rec.sent_types()[-3:] == ["chat.step", "chat.state", "chat.question"]
+    }.items()
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "guide"
     assert rec.last("chat.question")["step_id"] == "photo"
 
@@ -461,7 +465,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     await guide.on_photo_received("photo-1", None)
     await guide.on_answer("photo", "done_photos", "")
     assert doc.finished is True
-    assert rec.sent_types()[-1] == "chat.state"
+    assert rec.sent_types()[-1] == "chat.step"
     assert rec.sent[-1]["phase"] == "consult"
     assert rec.spoken[-1].startswith("[TIZIM] Yoʻriqli soʻrov tugadi.")
     assert "ekin — Pomidor" in rec.spoken[-1]
@@ -613,7 +617,7 @@ async def test_done_photos_after_two_photos_finalizes_and_finishes(store):
     assert summary["symptoms"] == "Barglarda sargʻish dogʻlar"
     assert summary["farmer_language"] == "uz"
     assert summary["location_on_plant"] == "Bargida"
-    assert rec.last("chat.state")["phase"] == "consult"
+    assert rec.last("chat.step")["phase"] == "consult"
 
 
 async def test_skip_is_rejected_a_photo_is_mandatory(store):
@@ -698,7 +702,7 @@ async def test_finalize_callback_failure_degrades_to_consult(store):
     await guide.on_photo_received("photo-1", None)
     await guide.on_answer("photo", "done_photos", "")
     assert guide.degraded is True
-    assert rec.last("chat.state")["phase"] == "consult"
+    assert rec.last("chat.step")["phase"] == "consult"
 
 
 async def test_done_photos_voice_path_records_and_finalizes(store):
@@ -906,7 +910,7 @@ async def test_degrade_via_broken_step_table(store, monkeypatch):
     await guide.on_answer("query_type", "disease_pest", "")
     assert guide.degraded is True
     assert doc.finished is True
-    assert rec.sent[-1]["type"] == "chat.state"
+    assert rec.sent[-1]["type"] == "chat.step"
     assert rec.sent[-1]["phase"] == "consult"
 
 
@@ -1012,7 +1016,7 @@ async def test_start_resumes_at_symptom_step_emits_symptom_phase_and_speaks_SY_A
     _disease_pest_at_symptom(doc)
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.sent_types() == ["chat.state", "chat.question"]
+    assert rec.sent_types() == ["chat.step", "chat.question"]
     assert rec.sent[0]["phase"] == "symptom"
     question = rec.last("chat.question")
     assert question["step_id"] == "symptom"
@@ -1031,7 +1035,7 @@ async def test_start_resumes_at_general_step_emits_general_phase_and_speaks_G_A(
     doc.title = "Umumiy savol"
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.sent_types() == ["chat.state", "chat.question"]
+    assert rec.sent_types() == ["chat.step", "chat.question"]
     assert rec.sent[0]["phase"] == "general"
     question = rec.last("chat.question")
     assert question["step_id"] == "general"
@@ -1058,12 +1062,12 @@ async def test_symptom_to_photo_tool_records_summary_and_advances(store):
     assert doc.symptom_done is True
     assert doc.symptom_summary == "Barglarda sargʻish dogʻlar, 3 kundan beri"
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "symptom",
         "option_id": "to_photo", "value": "Barglarda sargʻish dogʻlar, 3 kundan beri",
         "label": "Rasmga oʻtish",
-    }
-    assert rec.sent[-2]["type"] == "chat.state" and rec.sent[-2]["phase"] == "guide"
+    }.items()
+    assert rec.sent[-2]["type"] == "chat.step" and rec.sent[-2]["phase"] == "guide"
     assert rec.last("chat.question")["step_id"] == "photo"
     assert "Qabul qilindi" in result["note"]
     assert "[SAVOL step=photo]" in result["note"]
@@ -1224,7 +1228,7 @@ async def test_start_resumes_at_crop_context_step_speaks_CC_A(store):
     guide, rec = _guide(store, doc)
     await guide.start()
     # Anketa: chat.state keladi, lekin chat.question YOʻQ — savol ovozda.
-    assert rec.sent_types() == ["chat.state"]
+    assert rec.sent_types() == ["chat.step"]
     assert rec.sent[0]["phase"] == "crop_context"
     assert len(rec.spoken) == 1
     assert rec.spoken[0].startswith("[TIZIM][SAVOL step=crop_context]")
@@ -1240,12 +1244,12 @@ async def test_to_symptom_tool_advances_to_plant_part_step(store):
     assert result["status"] == "recorded"
     assert doc.crop_context_done is True
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "crop_context",
         "option_id": "to_symptom", "value": "", "label": "Belgilarga oʻtish",
-    }
+    }.items()
     # Advances into plant_part (the FIRST §2 question), not straight to symptom.
-    assert rec.sent[-2]["type"] == "chat.state" and rec.sent[-2]["phase"] == "guide"
+    assert rec.sent[-2]["type"] == "chat.step" and rec.sent[-2]["phase"] == "guide"
     question = rec.last("chat.question")
     assert question["step_id"] == "plant_part"
     assert "Qabul qilindi" in result["note"]
@@ -1471,11 +1475,11 @@ async def test_query_type_general_accepted_by_tap_enters_general_phase(store):
     await guide.on_answer("query_type", "general", "")
     assert doc.query_type == "general"
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "query_type",
         "option_id": "general", "value": "", "label": "Umumiy savol berish",
-    }
-    assert rec.sent_types()[-3:] == ["chat.step", "chat.state", "chat.question"]
+    }.items()
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "general"
     question = rec.last("chat.question")
     assert question["step_id"] == "general"
@@ -1572,11 +1576,11 @@ async def test_diag_offer_switch_diag_tap_reenters_diagnostic_at_crop(store):
     await guide.on_answer("diag_offer", "switch_diag", "")
     assert doc.query_type == "disease_pest"
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "diag_offer",
         "option_id": "switch_diag", "value": "", "label": "Ha, aniqlaymiz",
-    }
-    assert rec.sent_types()[-3:] == ["chat.step", "chat.state", "chat.question"]
+    }.items()
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "guide"
     assert rec.last("chat.question")["step_id"] == "crop"
     assert rec.spoken[-1].startswith("[TIZIM] Fermer aniqlash jarayoniga oʻtishni tanladi.")
@@ -1637,10 +1641,10 @@ async def test_diag_offer_stay_general_re_sends_without_duplicate_message(store)
     question_messages_before = [m for m in doc.messages if m.kind == "question"]
     await guide.on_answer("diag_offer", "stay_general", "")
     step_evt = rec.last("chat.step")
-    assert step_evt == {
+    assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "diag_offer",
         "option_id": "stay_general", "value": "", "label": "Yoʻq, davom etamiz",
-    }
+    }.items()
     assert rec.last("chat.question")["step_id"] == "general"
     assert rec.spoken[-1] == (
         "[TIZIM] Fermer umumiy savolda davom etishni tanladi. Savoliga qaytib "
