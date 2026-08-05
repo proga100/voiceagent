@@ -13,7 +13,8 @@ REST_PATHS = {
     "/health": {"get"},
     "/crops": {"get"},
     "/chats": {"get", "post"},
-    "/photos": {"post"},
+    # /photos (POST + GET serving route) is hidden from the schema — a
+    # testing/infra surface, not part of the documented API.
     "/chats/{chat_id}": {"get"},
     "/chats/{chat_id}/agronom-request": {"post"},
     "/chats/{chat_id}/agronom-review": {"post"},

@@ -247,15 +247,11 @@ def create_app() -> FastAPI:
 
     @app.post(
         "/photos",
-        tags=["chats"],
-        summary="Upload a farmer photo, get back its public URL",
-        response_model=None,
-        responses={
-            200: {"model": api_schemas.UploadPhotoResponse},
-            400: {"model": api_schemas.ErrorDetail,
-                  "description": "Invalid user_id / base64 / empty photo."},
-            413: {"model": api_schemas.ErrorDetail, "description": "Photo too large."},
-        },
+        # Hidden from Swagger (2026-08-05, team request): the endpoint stays
+        # fully functional (the mobile app and the tester upload through it),
+        # it is just not part of the documented public surface — in the target
+        # topology the MAIN backend stores photos and hands us URLs.
+        include_in_schema=False,
     )
     async def upload_photo(body: api_schemas.UploadPhotoBody, request: Request) -> dict:
         import asyncio
