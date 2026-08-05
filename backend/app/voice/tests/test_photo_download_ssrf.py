@@ -1,12 +1,10 @@
-"""SSRF hardening for `_download_photo` (photo.upload carries a CLIENT url):
-our own /photos route is read from disk (no HTTP), remote fetches are locked
-to the Spaces CDN host over https with redirects refused."""
+"""`_download_photo` accepts ANY http(s) photo URL (team decision 2026-08-05:
+the photo may be stored by the main Growz backend, any bucket, any CDN). Our
+own /photos route is short-circuited to a disk read — no HTTP, no traversal."""
 import pytest
 
 from app.config import Settings
-from app.voice.pipeline.voice_agent import (
-    _allowed_photo_hosts, _download_photo, _local_photo_path,
-)
+from app.voice.pipeline.voice_agent import _download_photo, _local_photo_path
 
 DEV = "11111111-2222-3333-4444-555555555555"
 
@@ -36,44 +34,43 @@ async def test_local_route_rejects_traversal(settings):
     assert await _download_photo(evil, settings) is None
 
 
-async def test_remote_url_rejected_without_spaces_allowlist(settings):
-    # Spaces off -> no remote origin is allowed at all: the classic SSRF
-    # probes must die before any socket is opened.
+async def test_any_host_is_accepted(settings, monkeypatch):
+    # No allowlist: a main-backend CDN, an S3 bucket, a LAN dev box — all fine.
+    seen = []
+
+    class _Resp:
+        content = b"\x89PNG"
+        headers = {"content-type": "image/png"}
+
+        def raise_for_status(self):
+            pass
+
+    class _Client:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            seen.append(url)
+            return _Resp()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
     for url in (
-        "http://169.254.169.254/latest/meta-data/",
-        "https://evil.example/p.jpg",
-        "http://127.0.0.1:8080/admin",
-        "file:///etc/passwd",
+        "https://cdn.growz.io/a.png",
+        "https://bucket.s3.amazonaws.com/b.png",
+        "http://10.0.0.5:9000/minio/c.png",
     ):
+        assert await _download_photo(url, settings) == (b"\x89PNG", "image/png")
+    assert len(seen) == 3
+
+
+async def test_non_http_urls_are_still_refused(settings):
+    for url in ("file:///etc/passwd", "ftp://x/a.jpg", "", "not-a-url"):
         assert await _download_photo(url, settings) is None
-
-
-async def test_remote_url_must_match_an_allowlisted_host(tmp_path):
-    s = Settings(
-        photos_dir=str(tmp_path / "photos"),
-        do_spaces_public_base="https://bucket.fra1.cdn.digitaloceanspaces.com",
-    )
-    assert _allowed_photo_hosts(s) == {"bucket.fra1.cdn.digitaloceanspaces.com"}
-    # Wrong host and http-scheme on the right host both refused pre-connect.
-    assert await _download_photo("https://evil.example/p.jpg", s) is None
-    assert await _download_photo(
-        "http://bucket.fra1.cdn.digitaloceanspaces.com/p.jpg", s
-    ) is None
-
-
-async def test_main_backend_cdn_is_allowed_via_settings(tmp_path):
-    # The photo will normally be stored by the MAIN Growz backend in ITS bucket,
-    # so that host is configured explicitly (PHOTO_URL_ALLOWED_HOSTS) — without
-    # it a legitimate main-backend URL would be refused as SSRF.
-    s = Settings(
-        photos_dir=str(tmp_path / "photos"),
-        do_spaces_public_base="https://ours.fra1.cdn.digitaloceanspaces.com",
-        photo_url_allowed_hosts="cdn.growz.io, growz-media.fra1.digitaloceanspaces.com",
-    )
-    assert _allowed_photo_hosts(s) == {
-        "ours.fra1.cdn.digitaloceanspaces.com",
-        "cdn.growz.io",
-        "growz-media.fra1.digitaloceanspaces.com",
-    }
-    # Still nothing else: an unlisted host dies before any socket is opened.
-    assert await _download_photo("https://evil.example/p.jpg", s) is None

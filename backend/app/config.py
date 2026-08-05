@@ -288,22 +288,6 @@ class Settings(BaseSettings):
     voice_api_token: str = "change-me-dev-token"
     cors_origins: str = "http://localhost:3000"
 
-    # Extra hosts a `photo.upload` URL may point at, comma-separated (no
-    # scheme, e.g. "cdn.growz.io,growz-media.fra1.cdn.digitaloceanspaces.com").
-    # The AI backend's OWN Spaces host is always allowed on top of these; this
-    # setting exists because the photo may be stored by the MAIN Growz backend
-    # in its own bucket/CDN. Anything not listed is refused before any socket
-    # is opened (SSRF guard — the URL is client input).
-    photo_url_allowed_hosts: str = ""
-
-    @property
-    def photo_host_list(self) -> list[str]:
-        return [
-            h.strip().lower()
-            for h in self.photo_url_allowed_hosts.split(",")
-            if h.strip()
-        ]
-
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

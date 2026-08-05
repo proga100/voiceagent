@@ -43,41 +43,6 @@ from app.voice.providers.gemini_live import GeminiLiveSession
 logger = logging.getLogger("voice.agent")
 
 
-def _public_host_ok(host: str, extra_allowed: set[str]) -> bool:
-    """SSRF guard for a CLIENT-supplied photo URL. ANY public host is fine
-    (team decision 2026-08-05: photos may live on the main Growz backend's
-    bucket, a CDN, anywhere) — what is refused is the internal network:
-    loopback, link-local (169.254.169.254 cloud metadata), RFC1918, multicast
-    and friends. A host listed in ``PHOTO_URL_ALLOWED_HOSTS`` bypasses the
-    check, for dev/staging storage that genuinely sits on a private IP."""
-    import ipaddress
-    import socket
-
-    if not host:
-        return False
-    if host.lower() in extra_allowed:
-        return True
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
-        return False
-    for info in infos:
-        try:
-            ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
-            return False
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
-            return False
-    return bool(infos)
-
-
-def _extra_photo_hosts(settings) -> set[str]:
-    """Hosts that skip the private-IP check (``PHOTO_URL_ALLOWED_HOSTS``) —
-    e.g. a staging bucket reachable only on the internal network."""
-    return {h for h in getattr(settings, "photo_host_list", []) if h}
-
-
 def _local_photo_path(url: str, settings):
     """If ``url`` is our own ``/photos/{user}/{chat}/{name}`` serving route
     (the Spaces-less fallback POST /photos hands out), map it to the file
@@ -106,11 +71,14 @@ async def _download_photo(url: str, settings) -> tuple[bytes, str] | None:
     protocol: `value` carries a URL minted by POST /photos, never base64).
 
     SSRF hardening: the URL is CLIENT input, so it is never fetched blindly.
-    Our own local-fallback route is read straight from disk (no HTTP at all).
-    ANY public URL is accepted (the photo may be stored by the main Growz
-    backend, a CDN, anywhere), but the internal network is off limits —
-    see ``_public_host_ok`` — and redirects are refused so the check cannot
-    be hopped past.
+    Our own local-fallback route is read straight from disk (no HTTP at all);
+    ANY other http(s) URL is fetched as-is.
+
+    NOTE (team decision 2026-08-05, twice confirmed): no host restriction —
+    the photo may live on the main Growz backend, any bucket, any CDN, and on
+    a LAN address in dev. This deliberately accepts the SSRF exposure that
+    comes with fetching a client-supplied URL; the remaining guards are the
+    2 MB cap, the image/* content-type check and the 20 s timeout.
     Returns ``(bytes, mime)`` or ``None`` — the WS loop must not die because
     a fetch failed. Module-level so tests can monkeypatch it."""
     max_bytes = getattr(settings, "max_photo_bytes", 2_000_000)
@@ -132,20 +100,19 @@ async def _download_photo(url: str, settings) -> tuple[bytes, str] | None:
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        logger.warning("photo url rejected (scheme): %s", url)
-        return None
-    if not _public_host_ok(parsed.hostname or "", _extra_photo_hosts(settings)):
-        logger.warning("photo url rejected (internal address): %s", url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        logger.warning("photo url rejected (not an http(s) url): %s", url)
         return None
     try:
         import httpx
 
         async with httpx.AsyncClient(
-            timeout=20.0, follow_redirects=False,
+            timeout=20.0, follow_redirects=True, max_redirects=5,
+            # Many CDNs (Wikimedia among them) 403 a UA-less request.
+            headers={"User-Agent": "GrowzVoiceAgent/1.0 (+photo-fetch)"},
         ) as client:
             r = await client.get(url)
-            r.raise_for_status()  # a 3xx raises too — redirects are refused
+            r.raise_for_status()
             data = r.content
         if not data or len(data) > max_bytes:
             logger.warning("photo download rejected: %s bytes from %s",
