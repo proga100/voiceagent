@@ -258,7 +258,8 @@ async def test_saved_crops_answer_expands_chips_without_advancing(store):
 
     q = rec.last("chat.question")
     assert q["step_id"] == "crop"
-    assert [o["id"] for o in q["options"]] == ["uuid-pomidor", "open_crop_picker"]
+    # Chips only — «Yoʻq» would contradict the «Ha» just answered.
+    assert [o["id"] for o in q["options"]] == ["uuid-pomidor"]
     assert guide.pending_step() == "crop", "expanding chips must not advance"
     assert doc.crop_id == "", "saved_crops must never persist as a crop"
 
@@ -1667,7 +1668,6 @@ async def test_memory_crop_chips_resolved_and_prepended_to_crop_options(store):
     assert question["options"] == [
         {"id": "uuid-pomidor", "label": "Pomidor"},
         {"id": "uuid-bodring", "label": "Bodring"},
-        {"id": "open_crop_picker", "label": "Yoʻq"},
     ]
 
 
@@ -1715,10 +1715,7 @@ async def test_memory_crop_chips_unresolved_names_are_dropped(store):
     await guide.start()
     await guide.on_answer("crop", "saved_crops", "")
     question = rec.last("chat.question")
-    assert question["options"] == [
-        {"id": "uuid-pomidor", "label": "Pomidor"},
-        {"id": "open_crop_picker", "label": "Yoʻq"},
-    ]
+    assert question["options"] == [{"id": "uuid-pomidor", "label": "Pomidor"}]
 
 
 async def test_memory_crop_chips_absent_still_offers_ha_yoq(store):

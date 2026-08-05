@@ -578,9 +578,9 @@ class ChatGuide:
             ]
         if not chips:
             return [("open_crop_picker", UZ["optCrops"])]
-        return [(c["id"], c["label"]) for c in chips] + [
-            ("open_crop_picker", UZ["optCropNo"])
-        ]
+        # Chips ONLY: the farmer already answered «Ha», so offering «Yoʻq»
+        # next to their own crops contradicts the answer they just gave.
+        return [(c["id"], c["label"]) for c in chips]
 
     def _opts_str(self, step_id: str) -> str:
         if step_id == "photo":
