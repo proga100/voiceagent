@@ -497,23 +497,25 @@ void main() {
   });
 
   group('ClientEvent builders round-trip', () {
-    test('session.start', () {
-      const e = SessionStartRequest();
+    test('chat.start carries language only — rate/voice are server settings', () {
+      const e = ChatStartRequest();
       expect(e.toJson(), {
-        'type': 'session.start',
-        'sample_rate': 16000,
+        'type': 'chat.start',
         'language': 'uz-UZ',
-        'voice': 'azure:uz-UZ-SardorNeural',
       });
+      // Renamed from session.start and slimmed down (2026-08-05): the server
+      // takes the mic rate and TTS voice from its own .env.
+      expect(e.toJson().containsKey('sample_rate'), false);
+      expect(e.toJson().containsKey('voice'), false);
     });
 
-    test('session.start carries user_id when provided', () {
-      const e = SessionStartRequest(userId: 'abc-123-def');
+    test('chat.start carries user_id when provided', () {
+      const e = ChatStartRequest(userId: 'abc-123-def');
       expect(e.toJson()['user_id'], 'abc-123-def');
     });
 
-    test('session.start carries crop + GPS enrichment when provided', () {
-      const e = SessionStartRequest(
+    test('chat.start carries crop + GPS enrichment when provided', () {
+      const e = ChatStartRequest(
         cropId: 'u-42', cropName: 'Pomidor', lat: 41.31, lon: 69.28,
       );
       final j = e.toJson();
@@ -523,42 +525,42 @@ void main() {
       expect(j['lon'], 69.28);
     });
 
-    test('session.start omits crop + GPS when absent', () {
-      final j = const SessionStartRequest().toJson();
+    test('chat.start omits crop + GPS when absent', () {
+      final j = const ChatStartRequest().toJson();
       expect(j.containsKey('crop_id'), false);
       expect(j.containsKey('crop_name'), false);
       expect(j.containsKey('lat'), false);
       expect(j.containsKey('lon'), false);
     });
 
-    test('session.start omits GPS unless BOTH lat and lon are present', () {
+    test('chat.start omits GPS unless BOTH lat and lon are present', () {
       expect(
-        const SessionStartRequest(lat: 41.0).toJson().containsKey('lat'),
+        const ChatStartRequest(lat: 41.0).toJson().containsKey('lat'),
         false,
       );
       expect(
-        const SessionStartRequest(lon: 69.0).toJson().containsKey('lon'),
-        false,
-      );
-    });
-
-    test('session.start omits user_id when null or empty', () {
-      expect(const SessionStartRequest().toJson().containsKey('user_id'), false);
-      expect(
-        const SessionStartRequest(userId: '').toJson().containsKey('user_id'),
+        const ChatStartRequest(lon: 69.0).toJson().containsKey('lon'),
         false,
       );
     });
 
-    test('session.start carries chat_id when provided', () {
-      const e = SessionStartRequest(chatId: '9f2c4e61a7b84d0f8a3c5e7d9b1f2a4c');
+    test('chat.start omits user_id when null or empty', () {
+      expect(const ChatStartRequest().toJson().containsKey('user_id'), false);
+      expect(
+        const ChatStartRequest(userId: '').toJson().containsKey('user_id'),
+        false,
+      );
+    });
+
+    test('chat.start carries chat_id when provided', () {
+      const e = ChatStartRequest(chatId: '9f2c4e61a7b84d0f8a3c5e7d9b1f2a4c');
       expect(e.toJson()['chat_id'], '9f2c4e61a7b84d0f8a3c5e7d9b1f2a4c');
     });
 
-    test('session.start omits chat_id when null or empty', () {
-      expect(const SessionStartRequest().toJson().containsKey('chat_id'), false);
+    test('chat.start omits chat_id when null or empty', () {
+      expect(const ChatStartRequest().toJson().containsKey('chat_id'), false);
       expect(
-        const SessionStartRequest(chatId: '').toJson().containsKey('chat_id'),
+        const ChatStartRequest(chatId: '').toJson().containsKey('chat_id'),
         false,
       );
     });
@@ -567,9 +569,8 @@ void main() {
       expect(const UserInterrupt().toJson(), {'type': 'user.interrupt'});
     });
 
-    test('session.end', () {
-      expect(const SessionEndRequest().toJson(), {'type': 'session.end'});
-    });
+    // "session.end" was removed (2026-08-05) — closing the socket is the
+    // hangup signal, so there is no client event left to round-trip.
 
     test('stt.corrected parses text and orig', () {
       final e = ServerEvent.fromJson({

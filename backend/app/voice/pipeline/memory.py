@@ -1,6 +1,6 @@
 """Per-farmer memory — Alomat remembers every user across sessions.
 
-The app sends a stable ``user_id`` (a device UUID) in ``session.start``. This
+The app sends a stable ``user_id`` (a device UUID) in ``chat.start``. This
 module owns everything that turns that id into the "she knows me" feeling:
 
   * ``MemoryStore``   — JSON file per profile (``data/memory/profiles/``) plus a

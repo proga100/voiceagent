@@ -64,7 +64,7 @@ def test_ws_event_models_are_injected(spec):
     # Nested models referenced by events ride along.
     assert "ChatOption" in schemas
     # Spot-check one shape survived the ref rewrite intact.
-    session = schemas["SessionStart"]
+    session = schemas["ChatStart"]
     assert {"type", "user_id", "chat_id", "crop_id"} <= set(session["properties"])
 
 

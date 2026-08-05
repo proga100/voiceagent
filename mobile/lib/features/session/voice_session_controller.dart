@@ -262,7 +262,8 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
   /// into the next chat; the chat list is invalidated so it reflects this
   /// conversation's final state (title, last message, updated_at).
   Future<void> stop() async {
-    _socket?.send(const SessionEndRequest());
+    // "session.end" was removed (2026-08-05): closing the socket IS the
+    // hangup signal — the backend finalizes in its teardown either way.
     await _teardown();
     state = state.copyWith(
       state: SessionState.disconnected,
@@ -283,12 +284,11 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
   /// down but leaves the app state intact. Unlike [stop] it does NOT clear
   /// [activeChatProvider] (so `_HomeGate` keeps [InterviewScreen] mounted with
   /// the transcript + diagnosis on screen), nor the crop/guide/agronom state or
-  /// the chat list — those stay exclusive to [stop]. Sending `session.end` lets
+  /// the chat list — those stay exclusive to [stop]. Closing the socket lets
   /// the backend loop finalize (chat fold-in, memory) exactly as after [stop].
   /// [_teardown] cancels `_eventSub`/`_connSub` before this returns, so no late
   /// `SocketConnectionState.failed` can overwrite `disconnected` with an error.
   Future<void> _suspendAfterExpiry() async {
-    _socket?.send(const SessionEndRequest());
     await _teardown();
     state = state.copyWith(
       state: SessionState.disconnected,
@@ -411,7 +411,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         state = state.copyWith(state: SessionState.connecting);
       case SocketConnectionState.connected:
         // (Re)arm the session and ensure the mic is running.
-        _socket?.send(SessionStartRequest(
+        _socket?.send(ChatStartRequest(
           userId: _deviceId,
           cropId: _crop?.id,
           cropName: _crop?.name,

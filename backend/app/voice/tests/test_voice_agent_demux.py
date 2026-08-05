@@ -61,9 +61,8 @@ async def _run(monkeypatch, events) -> _FakeSession:
     session = _FakeSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket(
-        [_text_frame({"type": "session.start"})]
+        [_text_frame({"type": "chat.start"})]
         + [_text_frame(e) for e in events]
-        + [_text_frame({"type": "session.end"})]
     )
     await voice_agent.run_voice_agent(ws, settings=None, session_id="t")
     return session
@@ -128,7 +127,7 @@ async def _run_memory(monkeypatch, tmp_path, start_event, *, enabled=True,
         enrich_enabled=False,
     )
     ws = _FakeWebSocket(
-        [_text_frame(start_event), _text_frame({"type": "session.end"})]
+        [_text_frame(start_event)]
     )
     await voice_agent.run_voice_agent(ws, settings=settings, session_id="t")
     return session
@@ -136,7 +135,7 @@ async def _run_memory(monkeypatch, tmp_path, start_event, *, enabled=True,
 
 async def test_user_id_triggers_memory_kickoff(monkeypatch, tmp_path):
     session = await _run_memory(
-        monkeypatch, tmp_path, {"type": "session.start", "user_id": DEV}
+        monkeypatch, tmp_path, {"type": "chat.start", "user_id": DEV}
     )
     kinds = [c[0] for c in session.calls]
     assert "set_memory" in kinds
@@ -149,7 +148,7 @@ async def test_user_id_triggers_memory_kickoff(monkeypatch, tmp_path):
 
 
 async def test_no_user_id_stays_memoryless(monkeypatch, tmp_path):
-    session = await _run_memory(monkeypatch, tmp_path, {"type": "session.start"})
+    session = await _run_memory(monkeypatch, tmp_path, {"type": "chat.start"})
     kinds = [c[0] for c in session.calls]
     assert "set_memory" not in kinds and "speak_system" not in kinds
 
@@ -157,14 +156,14 @@ async def test_no_user_id_stays_memoryless(monkeypatch, tmp_path):
 async def test_invalid_user_id_ignored(monkeypatch, tmp_path):
     session = await _run_memory(
         monkeypatch, tmp_path,
-        {"type": "session.start", "user_id": "../../etc/passwd"},
+        {"type": "chat.start", "user_id": "../../etc/passwd"},
     )
     assert "set_memory" not in [c[0] for c in session.calls]
 
 
 async def test_memory_disabled_stays_memoryless(monkeypatch, tmp_path):
     session = await _run_memory(
-        monkeypatch, tmp_path, {"type": "session.start", "user_id": DEV},
+        monkeypatch, tmp_path, {"type": "chat.start", "user_id": DEV},
         enabled=False,
     )
     assert "set_memory" not in [c[0] for c in session.calls]
@@ -173,7 +172,7 @@ async def test_memory_disabled_stays_memoryless(monkeypatch, tmp_path):
 async def test_session_without_memory_hooks_unaffected(monkeypatch, tmp_path):
     # A session lacking set_memory (e.g. staged path) must run untouched.
     session = await _run_memory(
-        monkeypatch, tmp_path, {"type": "session.start", "user_id": DEV},
+        monkeypatch, tmp_path, {"type": "chat.start", "user_id": DEV},
         session=_FakeSession(),
     )
     assert ("start",) in session.calls
@@ -199,7 +198,7 @@ async def _run_enrich(monkeypatch, start_event, *, enabled=True):
         enrich_weather_enabled=False,  # date + crop only → no HTTP
     )
     ws = _FakeWebSocket(
-        [_text_frame(start_event), _text_frame({"type": "session.end"})]
+        [_text_frame(start_event)]
     )
     await voice_agent.run_voice_agent(ws, settings=settings, session_id="t")
     return session
@@ -208,7 +207,7 @@ async def _run_enrich(monkeypatch, start_event, *, enabled=True):
 async def test_enrichment_injects_crop_and_date_before_start(monkeypatch):
     session = await _run_enrich(
         monkeypatch,
-        {"type": "session.start", "crop_name": "Pomidor", "crop_id": "u-1"},
+        {"type": "chat.start", "crop_name": "Pomidor", "crop_id": "u-1"},
     )
     kinds = [c[0] for c in session.calls]
     block = next(c[1] for c in session.calls if c[0] == "set_memory")
@@ -220,14 +219,14 @@ async def test_enrichment_injects_crop_and_date_before_start(monkeypatch):
 
 async def test_enrichment_runs_without_user_id_or_crop(monkeypatch):
     # Unlike memory, enrichment fires even with no user_id and no crop (date-only).
-    session = await _run_enrich(monkeypatch, {"type": "session.start"})
+    session = await _run_enrich(monkeypatch, {"type": "chat.start"})
     block = next(c[1] for c in session.calls if c[0] == "set_memory")
     assert "[BUGUNGI SHAROIT]" in block
 
 
 async def test_enrichment_disabled_injects_nothing(monkeypatch):
     session = await _run_enrich(
-        monkeypatch, {"type": "session.start", "crop_name": "Bodring"},
+        monkeypatch, {"type": "chat.start", "crop_name": "Bodring"},
         enabled=False,
     )
     assert "set_memory" not in [c[0] for c in session.calls]
@@ -242,8 +241,7 @@ async def test_enrichment_failure_never_blocks_start(monkeypatch):
     session = _FakeMemorySession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "crop_name": "Olma"}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "crop_name": "Olma"}),
     ])
     await voice_agent.run_voice_agent(
         ws, settings=Settings(memory_enabled=False, enrich_enabled=True),

@@ -450,11 +450,9 @@ sealed class ClientEvent {
 
 /// Opens a session. Sent once immediately after the socket connects, before any
 /// mic audio.
-class SessionStartRequest extends ClientEvent {
-  const SessionStartRequest({
-    this.sampleRate = micSampleRate,
+class ChatStartRequest extends ClientEvent {
+  const ChatStartRequest({
     this.language = defaultLanguage,
-    this.voice = defaultVoice,
     this.userId,
     this.cropId,
     this.cropName,
@@ -462,9 +460,9 @@ class SessionStartRequest extends ClientEvent {
     this.lon,
     this.chatId,
   });
-  final int sampleRate;
+  /// Mic rate and TTS voice are SERVER settings now (2026-08-05) — the app
+  /// no longer sends them. Only the language tag stays client-side.
   final String language;
-  final String voice;
 
   /// Stable per-install device id (see `core/identity/device_identity.dart`).
   /// Keys Alomat's per-farmer memory server-side; omitted when unknown.
@@ -486,10 +484,8 @@ class SessionStartRequest extends ClientEvent {
 
   @override
   Map<String, dynamic> toJson() => {
-    'type': 'session.start',
-    'sample_rate': sampleRate,
+    'type': 'chat.start',
     'language': language,
-    'voice': voice,
     if (userId != null && userId!.isNotEmpty) 'user_id': userId,
     if (cropId != null && cropId!.isNotEmpty) 'crop_id': cropId,
     if (cropName != null && cropName!.isNotEmpty) 'crop_name': cropName,
@@ -505,14 +501,6 @@ class UserInterrupt extends ClientEvent {
 
   @override
   Map<String, dynamic> toJson() => {'type': 'user.interrupt'};
-}
-
-/// Ends the session cleanly.
-class SessionEndRequest extends ClientEvent {
-  const SessionEndRequest();
-
-  @override
-  Map<String, dynamic> toJson() => {'type': 'session.end'};
 }
 
 /// A typed farmer message — the quiet/noisy-environment fallback for voice.

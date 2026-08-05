@@ -41,8 +41,7 @@ from app.schemas import (
     PhotoQuality,
     PhotoReceived,
     PhotoUpload,
-    SessionEnd,
-    SessionStart,
+    ChatStart,
     STTFinal,
     STTPartial,
     ToolCancelled,
@@ -255,10 +254,9 @@ class ChatDetailResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 WS_CLIENT_EVENTS: tuple[type[BaseModel], ...] = (
-    SessionStart,
+    ChatStart,
     AudioEnd,
     UserInterrupt,
-    SessionEnd,
     PhotoUpload,
     PhotoQuality,
     CameraCancelled,

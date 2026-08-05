@@ -119,7 +119,7 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
 
     events = [
-        {"type": "session.start", "user_id": DEV, "chat_id": doc.id},
+        {"type": "chat.start", "user_id": DEV, "chat_id": doc.id},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "query_type",
          "option_id": "disease_pest"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "crop",
@@ -138,7 +138,6 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
          "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "photo",
          "option_id": "done_photos"},
-        {"type": "session.end"},
     ]
     ws = _FakeWebSocket([_text_frame(e) for e in events])
     await voice_agent.run_voice_agent(ws, settings, "t")
@@ -189,8 +188,7 @@ async def test_resumed_finished_chat_skips_guide_and_records_consult_turns(
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
 
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -215,8 +213,7 @@ async def test_invalid_chat_id_falls_back_to_plain_session(monkeypatch, settings
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": "does-not-exist"}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": "does-not-exist"}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
     assert ws.sent_json == []
@@ -230,8 +227,7 @@ async def test_chats_disabled_ignores_chat_id(monkeypatch, tmp_path):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
     assert ws.sent_json == []
@@ -252,12 +248,11 @@ async def test_photo_upload_advances_guide_photo_step(monkeypatch, settings):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
             "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
         }),
-        _text_frame({"type": "session.end"}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -298,12 +293,11 @@ async def test_photo_message_carries_stored_url_for_agronom_ui(monkeypatch, sett
 
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
             "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
         }),
-        _text_frame({"type": "session.end"}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -343,12 +337,11 @@ async def test_rejected_photo_does_not_advance_or_count_the_guide(monkeypatch, s
     session.on_photo = reject_photo
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
             "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
         }),
-        _text_frame({"type": "session.end"}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -374,8 +367,7 @@ async def test_recorder_records_symptom_phase_turns(monkeypatch, settings):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -403,8 +395,7 @@ async def test_recorder_does_not_record_plain_guide_step_free_speech(
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -446,8 +437,7 @@ async def test_set_memory_crops_wired_from_farmer_profile(monkeypatch, tmp_path)
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -484,8 +474,7 @@ async def test_memory_crops_not_wired_when_chips_disabled(monkeypatch, tmp_path)
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -516,8 +505,7 @@ async def test_profile_crops_wired_from_tenant_mock(monkeypatch, tmp_path):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -551,8 +539,7 @@ async def test_set_memory_crops_failure_never_breaks_the_session(monkeypatch, tm
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")  # must not raise
 
@@ -572,8 +559,7 @@ async def test_teardown_records_diagnosis_message_and_last_diagnosis(
     session.last_diagnosis = {"disease": "Fitoftoroz", "confidence": "high", "date": "2026-07-11"}
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -594,8 +580,7 @@ async def test_agronom_offer_set_from_settings_flag_on_chat_setup(monkeypatch, s
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -609,8 +594,7 @@ async def test_agronom_offer_stays_false_when_flag_off(monkeypatch, settings):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -674,8 +658,7 @@ async def test_teardown_kicks_off_mock_review_with_fresh_doc(monkeypatch, settin
 
     ws = _MidCallWriteWebSocket(
         [
-            _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-            _text_frame({"type": "session.end"}),
+            _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         ],
         write_before_index=1,  # write lands AFTER session.start, BEFORE session.end
         on_write=write_pending_request,
@@ -716,8 +699,7 @@ async def test_agronom_teardown_kickoff_failure_never_breaks_teardown(
     monkeypatch.setattr(agronom_review_module, "maybe_start_mock_review", boom)
 
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")  # must not raise
 
@@ -739,8 +721,7 @@ async def test_diagnosis_kind_set_from_weed_chat_query_type(monkeypatch, setting
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -758,8 +739,7 @@ async def test_diagnosis_kind_set_from_disease_pest_chat_query_type(monkeypatch,
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -772,8 +752,7 @@ async def test_diagnosis_kind_stays_default_for_chatless_session(monkeypatch, se
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -797,8 +776,7 @@ async def test_teardown_diagnosis_message_carries_preparations_suffix(
     }
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -826,8 +804,7 @@ async def test_teardown_diagnosis_message_no_suffix_when_preparations_empty(
     }
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 
@@ -851,8 +828,7 @@ async def test_teardown_diagnosis_message_no_suffix_when_preparations_absent(
     }
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "session.start", "user_id": DEV, "chat_id": doc.id}),
-        _text_frame({"type": "session.end"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
 

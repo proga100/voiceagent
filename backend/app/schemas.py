@@ -20,11 +20,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class SessionStart(BaseModel):
-    type: Literal["session.start"] = "session.start"
-    sample_rate: int = 16000
+class ChatStart(BaseModel):
+    """Opens the session. Renamed from ``session.start`` (2026-08-05); the
+    old name is gone, so server and app must ship together.
+
+    ``sample_rate`` and ``voice`` were removed at the same time — both are
+    server settings now (``AUDIO_INPUT_SAMPLE_RATE_HZ`` / ``GEMINI_LIVE_VOICE``
+    in .env). ``language`` stays client-sent.
+    """
+
+    type: Literal["chat.start"] = "chat.start"
     language: str = "uz-UZ"
-    voice: str = "Aoede"
     # Stable per-install device id (UUID) — keys Alomat's per-farmer memory.
     # Empty/absent → memoryless session (web test client, older apps).
     user_id: str = ""
@@ -45,10 +51,6 @@ class AudioEnd(BaseModel):
 
 class UserInterrupt(BaseModel):
     type: Literal["user.interrupt"] = "user.interrupt"
-
-
-class SessionEnd(BaseModel):
-    type: Literal["session.end"] = "session.end"
 
 
 class PhotoUpload(BaseModel):

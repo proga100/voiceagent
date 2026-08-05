@@ -586,8 +586,9 @@ $('bConn').onclick = () => {
     $('bStop').disabled = false; $('bTxt').disabled = false; $('bInt').disabled = false;
     $('bPtt').disabled = false; $('bPhoto').disabled = false;
     photoCount = 0; $('photoCnt').textContent = '';
-    const start = {type: 'session.start', sample_rate: 16000, language: 'uz-UZ',
-                   voice: 'Charon', user_id: $('uid').value};
+    // sample_rate / voice — серверные настройки (.env), клиент их не шлёт.
+    const start = {type: 'chat.start', language: 'uz-UZ',
+                   user_id: $('uid').value};
     if ($('cid').value.trim()) start.chat_id = $('cid').value.trim();
     send(start);
     if (!start.chat_id) log('err', 'внимание',

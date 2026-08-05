@@ -102,13 +102,13 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
     session = _build_session(websocket, settings, session_id)
 
     started = False
-    # Per-farmer memory (Alomat remembers users). Populated when session.start
+    # Per-farmer memory (Alomat remembers users). Populated when chat.start
     # carries a valid user_id; None → memoryless session (old behaviour).
     mem_store: MemoryStore | None = None
     mem_device = ""
     mem_key = ""
     mem_profile = None
-    # Multichat (docs/multichat_contract.md). Populated when session.start
+    # Multichat (docs/multichat_contract.md). Populated when chat.start
     # carries a chat_id bound to an existing, owned chat; chat_guide is None
     # whenever the guided flow itself could not be wired (chat_doc may still
     # be set so teardown persists whatever the plain session produced).
@@ -123,7 +123,7 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
 
             if (data := message.get("bytes")) is not None:
                 if not started:
-                    # Allow audio before an explicit session.start for simple clients.
+                    # Allow audio before an explicit chat.start for simple clients.
                     await session.start()
                     started = True
                 await session.on_audio_chunk(data)
@@ -137,11 +137,17 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
             except json.JSONDecodeError:
                 continue
             etype = event.get("type")
-            if etype == "session.start":
+            if etype == "chat.start":
                 if not started:
-                    session.set_input_sample_rate(event.get("sample_rate"))
-                    if hasattr(session, "set_voice"):
-                        session.set_voice(event.get("voice"))
+                    # sample_rate / voice are SERVER settings (2026-08-05): the
+                    # session already took the rate from
+                    # settings.audio_input_sample_rate_hz at construction, and
+                    # the voice comes from settings.gemini_live_voice — which
+                    # may carry an "azure:<neural-voice>" prefix. Nothing the
+                    # client sends is read here any more.
+                    cfg_voice = getattr(settings, "gemini_live_voice", None)
+                    if cfg_voice and hasattr(session, "set_voice"):
+                        session.set_voice(cfg_voice)
                     # Multichat: resolve chat_id -> stored ChatDoc BEFORE the
                     # rest of the prompt is assembled (the guide policy/history
                     # block and the enrichment crop fallback both need it). Any
@@ -368,9 +374,11 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                 # Client audio telemetry (app built with AUDIO_DEBUG=true).
                 # print(): app loggers have no handler under uvicorn's config.
                 print(f"[client-debug] {event.get('msg')}", flush=True)
-            elif etype in ("audio.end", "session.end"):
-                if etype == "session.end":
-                    break
+            elif etype == "audio.end":
+                # "session.end" was removed (2026-08-05): closing the socket
+                # is the hangup signal, and the finally-block below already
+                # does the full teardown either way.
+                pass
     except WebSocketDisconnect:
         logger.info("voice agent disconnected")
     finally:

@@ -201,7 +201,7 @@ def create_app() -> FastAPI:
     async def create_chat(body: CreateChatBody) -> dict:
         """Create a chat for the device and return its summary (contract
         §2.2). The chat is bound to a voice session later via
-        ``SessionStart.chat_id`` on the WebSocket."""
+        ``ChatStart.chat_id`` on the WebSocket."""
         from app.voice.chat import ChatStore, build_summary
         from app.voice.pipeline.memory import valid_device_id
 

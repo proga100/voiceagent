@@ -49,14 +49,15 @@ String httpBaseFromWs(String ws) {
   return '$scheme://${u.host}$port$path';
 }
 
-/// TTS voice id sent in `session.start`. `azure:<neural-voice>` picks the Azure
-/// speech backend on the server. Sardor = the male uz-UZ voice (Rais persona).
-const String defaultVoice = 'azure:uz-UZ-SardorNeural';
+// defaultVoice removed 2026-08-05 — the voice is a SERVER setting now
+// (GEMINI_LIVE_VOICE in .env, which still accepts `azure:uz-UZ-SardorNeural`).
+// The app no longer sends it.
 
-/// BCP-47 language tag sent in `session.start`.
+/// BCP-47 language tag sent in `chat.start`.
 const String defaultLanguage = 'uz-UZ';
 
-/// Microphone capture rate — the backend expects PCM16 mono @ 16 kHz.
+/// Microphone capture rate for local capture. NOT sent to the server any
+/// more — the backend takes its own AUDIO_INPUT_SAMPLE_RATE_HZ (2026-08-05).
 const int micSampleRate = 16000;
 
 /// Agent voice playback rate — the backend streams PCM16 mono @ 24 kHz.

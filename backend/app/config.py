@@ -216,7 +216,7 @@ class Settings(BaseSettings):
     do_spaces_prefix: str = "voiceagent/photos"
 
     # ---- Per-farmer memory (Alomat remembers every user) ----
-    # When the client sends a user_id in session.start, the farmer's profile
+    # When the client sends a user_id in chat.start, the farmer's profile
     # (name, region, crops, last problem) is injected into the system prompt and
     # updated after each session by a flash extraction call. Flip OFF for fully
     # stateless sessions.
@@ -237,7 +237,7 @@ class Settings(BaseSettings):
     # CREDENTIALS + GOOGLE_PROJECT_ID. Absent creds = built-in transcription.
 
     # ---- Multichat + hybrid guided flow (docs/multichat_contract.md) ----
-    # A session.start carrying a chat_id binds the call to a stored chat
+    # A chat.start carrying a chat_id binds the call to a stored chat
     # (server-driven guided flow, then persisted free consultation). Flip OFF
     # for byte-identical legacy behaviour (chat_id is ignored either way when
     # unknown/invalid — this only disables the feature outright).
