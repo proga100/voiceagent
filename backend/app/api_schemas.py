@@ -36,7 +36,9 @@ from app.schemas import (
     PhotoReceived,
     PhotoUpload,
     ChatStart,
+    STTCorrected,
     STTPartial,
+    TextInput,
     ToolRequestPhoto,
     TTSFinished,
     UserInterrupt,
@@ -268,12 +270,14 @@ class ChatDetailResponse(BaseModel):
 WS_CLIENT_EVENTS: tuple[type[BaseModel], ...] = (
     ChatStart,
     UserInterrupt,
+    TextInput,
     PhotoUpload,
     ChatAnswer,
 )
 
 WS_SERVER_EVENTS: tuple[type[BaseModel], ...] = (
     STTPartial,
+    STTCorrected,
     LLMToken,
     TTSFinished,
     AgentInterrupted,

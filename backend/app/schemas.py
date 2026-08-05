@@ -49,6 +49,14 @@ class UserInterrupt(BaseModel):
     type: Literal["user.interrupt"] = "user.interrupt"
 
 
+class TextInput(BaseModel):
+    """A typed farmer message — the quiet/noisy-environment fallback for
+    voice. Answered exactly like a spoken turn (voice + text)."""
+
+    type: Literal["text.input"] = "text.input"
+    value: str = ""  # capped server-side at 500 chars
+
+
 class PhotoUpload(BaseModel):
     """Reworked 2026-08-05: the photo bytes travel over REST (``POST /photos``
     returns a public URL) and this WS event carries ONLY that URL in ``value``.
@@ -69,6 +77,16 @@ class PhotoUpload(BaseModel):
 class STTPartial(BaseModel):
     type: Literal["stt.partial"] = "stt.partial"
     value: str
+
+
+class STTCorrected(BaseModel):
+    """An accurate farmer subtitle from the parallel Scribe STT: the backend
+    re-transcribed the finished turn's audio. ``orig`` is the rough text as
+    originally shown, so the client can patch exactly that bubble."""
+
+    type: Literal["stt.corrected"] = "stt.corrected"
+    text: str = ""
+    orig: str = ""
 
 
 class LLMToken(BaseModel):
