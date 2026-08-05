@@ -39,8 +39,6 @@ sealed class ServerEvent {
         return const TtsFinished();
       case 'agent.interrupted':
         return const AgentInterrupted();
-      case 'usage_azure':
-        return UsageAzure(chars: _int(json['chars']));
       case 'error':
         return ErrorEvent(
           code: _str(json['code']),
@@ -131,12 +129,6 @@ class TtsFinished extends ServerEvent {
 /// playback instantly and close the avatar mouth.
 class AgentInterrupted extends ServerEvent {
   const AgentInterrupted();
-}
-
-/// Azure TTS character accounting for the debug panel.
-class UsageAzure extends ServerEvent {
-  const UsageAzure({required this.chars});
-  final int chars;
 }
 
 /// A server-side error. Surfaced to the transcript as a system bubble.

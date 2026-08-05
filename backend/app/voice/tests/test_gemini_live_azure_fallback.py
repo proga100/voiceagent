@@ -43,6 +43,7 @@ class FakeAzure:
         self._fail_times = fail_times
         self.calls = 0
         self.closed = False
+        self.close_calls = 0
 
     async def synthesize_chunk(self, text, voice, session_id="default"):
         self.calls += 1
@@ -55,6 +56,7 @@ class FakeAzure:
 
     async def aclose(self):
         self.closed = True
+        self.close_calls += 1
 
 
 def _make_session(settings):
@@ -115,7 +117,9 @@ async def test_401_falls_back_on_the_first_sentence_without_error_spam():
     await _drain(session)
 
     assert session._azure_mode is False, "must switch to the Gemini voice"
-    assert "tts.fallback" in _types(sent)
+    # "tts.fallback" is no longer sent to the client (2026-08-05) — the voice
+    # swap is silent on the wire and only logged server-side.
+    assert "tts.fallback" not in _types(sent)
     # The whole point: no per-sentence 401 dumped into the farmer's chat.
     assert "error" not in _types(sent)
     # The queued sentence is dropped, not retried against a dead provider.
@@ -130,7 +134,7 @@ async def test_missing_key_is_permanent_too():
     await _drain(session)
 
     assert session._azure_mode is False
-    assert "tts.fallback" in _types(sent)
+    assert "tts.fallback" not in _types(sent)
 
 
 # ---- (b) transient faults get a second chance ------------------------------
@@ -149,7 +153,7 @@ async def test_transient_500_retries_once_then_falls_back():
     # First failure surfaces as an error and keeps Azure; the second gives up.
     assert _types(sent).count("error") == 1
     assert session._azure_mode is False
-    assert "tts.fallback" in _types(sent)
+    assert "tts.fallback" not in _types(sent)
 
 
 async def test_a_good_sentence_clears_the_failure_streak():
@@ -165,7 +169,6 @@ async def test_a_good_sentence_clears_the_failure_streak():
 
     assert session._azure_mode is True, "one blip must not kill the good voice"
     assert session._azure_failures == 0
-    assert "tts.fallback" not in _types(sent)
 
 
 # ---- (c) the tts.finished bookkeeping --------------------------------------
@@ -287,7 +290,9 @@ async def test_fallback_closes_the_azure_client_and_is_idempotent():
 
     assert fake.closed is True
     assert session._azure is None
-    assert _types(sent).count("tts.fallback") == 1
+    # Idempotence is observable through the provider teardown now that the
+    # client event is gone: the second call closed nothing extra.
+    assert fake.close_calls == 1
 
 
 # ---- (e) never enter Azure mode with no key at all -------------------------

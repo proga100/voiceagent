@@ -106,20 +106,6 @@ class TTSFinished(BaseModel):
     type: Literal["tts.finished"] = "tts.finished"
 
 
-class TTSFallback(BaseModel):
-    """The voice changed mid-session because Azure Neural TTS stopped working
-    (revoked key, quota, outage). The reply keeps streaming as Gemini Live's
-    own audio — accented Uzbek instead of native — so the session continues
-    rather than going silent. Emitted once, not per sentence."""
-
-    type: Literal["tts.fallback"] = "tts.fallback"
-    from_: Literal["azure"] = Field("azure", alias="from")
-    to: Literal["gemini"] = "gemini"
-    reason: str = ""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
 class AgentInterrupted(BaseModel):
     type: Literal["agent.interrupted"] = "agent.interrupted"
 

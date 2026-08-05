@@ -757,12 +757,9 @@ class GeminiLiveSession:
         self._spoke = False
         if owed_finish:
             await self._send_json({"type": "tts.finished"})
-        # Older clients don't know this type and ignore it (forward compat),
-        # which is the right default: the voice changes, nothing looks broken.
-        await self._send_json(
-            {"type": "tts.fallback", "from": "azure", "to": "gemini",
-             "reason": reason}
-        )
+        # NOT sent to the client (2026-08-05): the app never parsed it, and a
+        # voice swap needs no UI. Server-side log keeps the event visible.
+        logger.warning("TTS fallback azure -> gemini: %s", reason)
         if self._azure is not None:
             try:
                 await self._azure.aclose()
@@ -787,11 +784,10 @@ class GeminiLiveSession:
                 if not self._spoke:
                     self._spoke = True
                     await self._send_json({"type": "tts.started"})
-                # Azure bills per character; report the running total for the panel.
+                # Azure bills per character. Counted server-side only
+                # (2026-08-05): the app stored the number but never showed it,
+                # so this was pure telemetry on the farmer's socket.
                 self._azure_chars += len(sentence)
-                await self._send_json(
-                    {"type": "usage_azure", "chars": self._azure_chars}
-                )
                 try:
                     async for frame in self._azure.synthesize_chunk(
                         sentence, self._azure_voice

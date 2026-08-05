@@ -46,7 +46,6 @@ from app.schemas import (
     STTPartial,
     ToolCancelled,
     ToolRequestPhoto,
-    TTSFallback,
     TTSFinished,
     TTSStarted,
     UserInterrupt,
@@ -270,7 +269,6 @@ WS_SERVER_EVENTS: tuple[type[BaseModel], ...] = (
     LLMToken,
     TTSStarted,
     TTSFinished,
-    TTSFallback,
     AgentInterrupted,
     LatencyMetrics,
     ErrorEvent,
@@ -336,8 +334,10 @@ event payload is included under **Schemas** below.
 * **Photos** are the one exception to "binary = mic": farmer photos ride the
   JSON plane base64-encoded (`PhotoUpload`) so a still image is never confused
   with a mic frame.
-* Some events (`usage`, the case-tool events) are emitted as raw dicts on the
-  wire; the models document the exact shapes both sides agreed on.
+* The case-tool events are emitted as raw dicts on the wire; the models
+  document the exact shapes both sides agreed on. Token accounting (`usage`,
+  `usage_azure`) and the Azure->Gemini voice swap (`tts.fallback`) were
+  REMOVED from the socket on 2026-08-05 — all three are server-side logs now.
 * The guided-flow events (`ChatQuestion`/`ChatAnswer`/`ChatStep`/`ChatState`)
   follow `docs/multichat_contract.md`.
 """

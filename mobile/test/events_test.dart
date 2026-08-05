@@ -37,10 +37,11 @@ void main() {
       expect(e, isA<UnknownEvent>());
     });
 
-    test('usage_azure', () {
+    test('usage_azure is no longer part of the protocol -> unknown event', () {
+      // Server-side telemetry only (2026-08-05), like `usage`: the app stored
+      // the character count but never displayed it.
       final e = ServerEvent.fromJson({'type': 'usage_azure', 'chars': 142});
-      expect(e, isA<UsageAzure>());
-      expect((e as UsageAzure).chars, 142);
+      expect(e, isA<UnknownEvent>());
     });
 
     test('error', () {

@@ -40,7 +40,6 @@ enum SessionState { disconnected, connecting, live, error }
 class SessionSnapshot {
   const SessionSnapshot({
     this.state = SessionState.disconnected,
-    this.azureChars,
     this.micLevel = 0,
     this.pttHeld = false,
     this.errorMessage,
@@ -53,7 +52,6 @@ class SessionSnapshot {
 
 
   /// Latest Azure TTS character count, for the debug row.
-  final int? azureChars;
 
   /// Normalised mic input level `0..1`, for the avatar ring.
   final double micLevel;
@@ -63,14 +61,12 @@ class SessionSnapshot {
 
   SessionSnapshot copyWith({
     SessionState? state,
-    int? azureChars,
     double? micLevel,
     bool? pttHeld,
     String? errorMessage,
     bool clearError = false,
   }) => SessionSnapshot(
     state: state ?? this.state,
-    azureChars: azureChars ?? this.azureChars,
     micLevel: micLevel ?? this.micLevel,
     pttHeld: pttHeld ?? this.pttHeld,
     errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -454,8 +450,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
       case AgentInterrupted():
         _flushPlayback();
         transcript.onAgentDone();
-      case UsageAzure(:final chars):
-        state = state.copyWith(azureChars: chars);
       case ErrorEvent(:final code, :final message):
         transcript.addSystem('Xatolik: $message ($code)');
       case SttCorrected(:final text, :final orig):
