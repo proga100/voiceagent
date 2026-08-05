@@ -105,7 +105,7 @@
 <body>
 <div class="wrap">
   <h1>Growz Voice Agent — WebSocket tester</h1>
-  <p class="sub">Полный цикл: создание чата, все шаги, голос с микрофона (PTT), фото, диагноз. Показывает каждый payload и проигрывает ответ. Файл самодостаточный; для микрофона откройте по https или с localhost.</p>
+  <p class="sub">Полный цикл: все шаги, голос с микрофона (PTT), фото, диагноз. Показывает каждый payload и проигрывает ответ. Файл самодостаточный; для микрофона откройте по https или с localhost.</p>
 
   <div class="grid">
     <div>
@@ -117,11 +117,10 @@
         <input id="tok" value="change-me-dev-token">
         <label>user_id (UUID)</label>
         <input id="uid" value="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d">
-        <label>chat_id (заполнится сам)</label>
-        <input id="cid" placeholder="нажмите «Создать чат»">
+        <label>chat_id — id чеканит ГЛАВНЫЙ бэкенд; сервер авто-создаёт чат по незнакомому id</label>
+        <input id="cid" placeholder="генерируется при загрузке; можно вставить свой">
         <div style="margin-top:12px">
-          <button id="bChat">1 · Создать чат</button>
-          <button id="bConn" class="primary">2 · Подключиться</button>
+          <button id="bConn" class="primary">Подключиться</button>
           <button id="bStop" class="danger" disabled>Отключиться</button>
         </div>
         <div class="status" style="margin-top:14px">
@@ -586,30 +585,10 @@ async function openCropPicker(step) {
 }
 
 /* ---- REST: создать чат ---- */
-$('bChat').onclick = async () => {
-  const base = httpBase(wsUrlNorm());
-  try {
-    log('out', 'POST ' + base + '/chats', {user_id: $('uid').value});
-    const r = await fetch(base + '/chats', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({user_id: $('uid').value})
-    });
-    const body = await r.text();
-    if (!r.ok) {
-      log('err', 'ошибка REST', 'HTTP ' + r.status + ' от ' + base + '/chats: ' + body.slice(0, 200));
-      return;
-    }
-    const j = JSON.parse(body);
-    if (!j.data || !j.data.id) {
-      log('err', 'ошибка REST', 'ответ без data.id: ' + body.slice(0, 200));
-      return;
-    }
-    $('cid').value = j.data.id;
-    log('in', 'чат создан', j.data);
-  } catch (e) {
-    log('err', 'ошибка REST', String(e) + '  (проверьте адрес и доступность сервера)');
-  }
-};
+// «Создать чат» удалена (2026-08-05): id чеканит ГЛАВНЫЙ бэкенд, сервер
+// авто-создаёт чат по незнакомому id. Тестер имитирует это: при каждой
+// загрузке страницы поле chat_id получает свежий UUID (можно заменить своим).
+$('cid').value = uuid4();
 
 /* ---- WebSocket ---- */
 $('bConn').onclick = () => {
@@ -633,10 +612,12 @@ $('bConn').onclick = () => {
     // sample_rate / voice — серверные настройки (.env), клиент их не шлёт.
     const start = {type: 'chat.start', language: 'uz-UZ',
                    user_id: $('uid').value};
-    if ($('cid').value.trim()) start.chat_id = $('cid').value.trim();
+    if (!$('cid').value.trim()) {
+      $('cid').value = uuid4();   // авто: сервер создаст чат по этому id
+      log('out', 'chat_id', 'не был задан — сгенерирован: ' + $('cid').value);
+    }
+    start.chat_id = $('cid').value.trim();
     send(start);
-    if (!start.chat_id) log('err', 'внимание',
-      'chat_id не задан — опрос НЕ запустится, придёт только свободный ответ модели. Нажмите «Создать чат».');
   };
 
   sock.onmessage = e => {
