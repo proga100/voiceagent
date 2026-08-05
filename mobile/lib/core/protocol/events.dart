@@ -42,8 +42,6 @@ sealed class ServerEvent {
           code: _str(json['code']),
           message: _str(json['message']),
         );
-      case 'session.expired':
-        return SessionExpired(message: _str(json['message']));
       case 'stt.corrected':
         return SttCorrected(text: _str(json['text']), orig: _str(json['orig']));
       case 'tool.request_photo':
@@ -136,12 +134,6 @@ class SttCorrected extends ServerEvent {
 
   final String text;
   final String orig;
-}
-
-class SessionExpired extends ServerEvent {
-  const SessionExpired({required this.message});
-
-  final String message;
 }
 
 class ErrorEvent extends ServerEvent {

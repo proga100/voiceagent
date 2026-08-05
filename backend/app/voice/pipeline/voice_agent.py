@@ -100,6 +100,13 @@ def _build_session(websocket: WebSocket, settings: Settings, session_id: str):
     async def send_bytes(data: bytes) -> None:
         await websocket.send_bytes(data)
 
+    async def close_client() -> None:
+        # session.expired left the protocol (2026-08-05): when the Live session
+        # is terminally dead the server closes the farmer's socket instead —
+        # the app's auto-reconnect then opens a FRESH session that resumes the
+        # stored chat.
+        await websocket.close(code=1000)
+
     if settings.use_gemini_live_audio:
         logger.info("voice agent: Gemini Live realtime path")
         return GeminiLiveSession(
@@ -107,6 +114,7 @@ def _build_session(websocket: WebSocket, settings: Settings, session_id: str):
             auth=auth,
             send_json=send_json,
             send_bytes=send_bytes,
+            close_client=close_client,
             system_prompt=load_system_prompt(settings),
             session_id=session_id,
         )

@@ -99,11 +99,11 @@ class Settings(BaseSettings):
     # Gemini Live enforces a session duration limit and closes the socket
     # (GoAway -> ConnectionClosed 1011 "deadline expired"). With resumption on,
     # the server issues a resume handle we use to re-establish the SAME session
-    # on close — no client-visible session.expired, no lost context.
-    # False reproduces today's behavior byte-for-byte (session.expired on close).
+    # on close — invisible to the client, no lost context.
+    # False disables transparent resumption (socket closes on Live deadline).
     live_session_resumption_enabled: bool = True
     # Bounded transparent-reconnect cap per GeminiLiveSession; once exhausted we
-    # fall back to the session.expired path.
+    # fall back to closing the client socket.
     live_session_max_reconnects: int = 5
 
     # ---- External Uzbek TTS fallback (only used when tts_provider=external) ----

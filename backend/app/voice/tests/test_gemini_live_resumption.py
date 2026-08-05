@@ -2,8 +2,8 @@
 
 On a server-side deadline close the receive loop re-establishes the SAME
 Google Live session via ``SessionResumptionConfig(handle=...)`` — no
-client-visible ``session.expired``, no lost context — falling back to the
-existing ``session.expired`` path only when there is no resume handle, the
+client-visible event, no lost context — falling back to closing the client
+socket only when there is no resume handle, the
 reconnect cap is exhausted, resumption is disabled, or the reconnect fails.
 
 Everything is mocked at the module/session boundary (like
@@ -152,7 +152,10 @@ class FakeAuth:
 
 def _make_session(settings, sessions):
     """Wire a GeminiLiveSession onto scripted fake Live ``sessions`` and return
-    (session, sent, fake_live)."""
+    (session, sent, fake_live). ``session.expired`` left the protocol
+    (2026-08-05): the terminal path CLOSES the client socket instead, recorded
+    here as a {"type": "__closed__"} marker so the old wait/assert helpers
+    keep working unchanged."""
     sent: list[dict] = []
 
     async def send_json(payload):
@@ -161,11 +164,15 @@ def _make_session(settings, sessions):
     async def send_bytes(data):
         pass
 
+    async def close_client():
+        sent.append({"type": "__closed__"})
+
     fake_live = FakeLive(sessions)
     auth = FakeAuth(FakeClient(fake_live))
     session = GeminiLiveSession(
         settings=settings, auth=auth,
         send_json=send_json, send_bytes=send_bytes,
+        close_client=close_client,
         system_prompt="x",
     )
     # Drive the Live boundary directly (bypass tool building in start()).
@@ -225,33 +232,33 @@ async def test_transparent_reconnect_resumes_with_handle_no_session_expired():
     assert fake_live.configs[1].session_resumption.handle == "H1"
     # First connect ISSUED handles (handle=None), never resumed.
     assert fake_live.configs[0].session_resumption.handle is None
-    assert not any(p["type"] == "session.expired" for p in sent)
+    assert not any(p["type"] == "__closed__" for p in sent)
     assert session._reconnects == 1
 
 
-# ---- (b) no handle -> session.expired --------------------------------------
+# ---- (b) no handle -> client socket closed --------------------------------------
 
 
-async def test_remote_close_without_handle_falls_back_to_session_expired():
+async def test_remote_close_without_handle_closes_the_client_socket():
     s1 = FakeSession([
         turn_yield_then_raise([], ConnectionClosedError("deadline expired"))
     ])
     session, sent, fake_live = _make_session(Settings(), [s1])
 
     await _run_loop_until(
-        session, lambda: any(p["type"] == "session.expired" for p in sent)
+        session, lambda: any(p["type"] == "__closed__" for p in sent)
     )
 
-    expired = [p for p in sent if p["type"] == "session.expired"]
-    assert len(expired) == 1
+    closed = [p for p in sent if p["type"] == "__closed__"]
+    assert len(closed) == 1
     assert fake_live.connect_calls == 1
     assert session._reconnects == 0
 
 
-# ---- (c) cap exhausted -> session.expired ----------------------------------
+# ---- (c) cap exhausted -> client socket closed ----------------------------------
 
 
-async def test_reconnect_cap_zero_falls_back_to_session_expired():
+async def test_reconnect_cap_zero_closes_the_client_socket():
     s1 = FakeSession([
         turn_yield_then_raise(
             [FakeResponse(session_resumption_update=SRU(resumable=True, new_handle="H1"))],
@@ -263,10 +270,10 @@ async def test_reconnect_cap_zero_falls_back_to_session_expired():
     )
 
     await _run_loop_until(
-        session, lambda: any(p["type"] == "session.expired" for p in sent)
+        session, lambda: any(p["type"] == "__closed__" for p in sent)
     )
 
-    assert any(p["type"] == "session.expired" for p in sent)
+    assert any(p["type"] == "__closed__" for p in sent)
     assert fake_live.connect_calls == 1
     assert session._reconnects == 0
 
@@ -306,7 +313,7 @@ async def test_transparent_reconnect_never_cancels_case_task():
     assert session._case_task.done() and not session._case_task.cancelled()
 
 
-# ---- disabled: no session_resumption in config, straight to session.expired -
+# ---- disabled: no session_resumption in config, straight to socket close -
 
 
 async def test_resumption_disabled_omits_config_and_expires_on_close():
@@ -321,11 +328,11 @@ async def test_resumption_disabled_omits_config_and_expires_on_close():
     )
 
     await _run_loop_until(
-        session, lambda: any(p["type"] == "session.expired" for p in sent)
+        session, lambda: any(p["type"] == "__closed__" for p in sent)
     )
 
     # With resumption disabled the connect config carries NO session_resumption,
     assert fake_live.configs[0].session_resumption is None
-    # and even a captured handle does not prevent the session.expired fallback.
-    assert any(p["type"] == "session.expired" for p in sent)
+    # and even a captured handle does not prevent the socket-close fallback.
+    assert any(p["type"] == "__closed__" for p in sent)
     assert fake_live.connect_calls == 1

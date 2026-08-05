@@ -132,12 +132,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
   /// `chat_id` — exactly today's behaviour.
   String? _chatId;
 
-  /// Set by [_suspendAfterExpiry] (the session.expired safety-net) so the next
-  /// [start] resumes the SAME chat WITHOUT wiping the live transcript: the
-  /// on-screen transcript (with the just-delivered diagnosis card) is fresher
-  /// than the [ActiveChat.history] snapshot taken at chat-open. Consumed and
-  /// reset to false in [start].
-  bool _resumeSameChat = false;
 
   @override
   SessionSnapshot build() {
@@ -201,17 +195,13 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
     _crop = ref.read(selectedCropProvider);
     _latLon = await const LocationService().currentLatLon();
 
-    // Resuming after a session.expired soft-stop: the live transcript on screen
-    // (with the just-delivered diagnosis card) is fresher than active.history,
-    // so keep it as-is — skip the clear + history reload. Fresh starts clear
-    // and seed from the chat-open snapshot as before.
-    if (_resumeSameChat) {
-      _resumeSameChat = false;
-    } else {
-      ref.read(transcriptProvider.notifier).clear();
-      if (active != null && active.history.isNotEmpty) {
-        ref.read(transcriptProvider.notifier).addHistory(active.history);
-      }
+    // session.expired left the protocol (2026-08-05): a terminally dead Live
+    // session now surfaces as a server-side socket close, and the socket's
+    // auto-reconnect keeps this controller (and the on-screen transcript)
+    // alive — so a manual start() is always a fresh start.
+    ref.read(transcriptProvider.notifier).clear();
+    if (active != null && active.history.isNotEmpty) {
+      ref.read(transcriptProvider.notifier).addHistory(active.history);
     }
     if (active != null && active.summary.id.isEmpty) {
       ref.read(transcriptProvider.notifier).addSystem(S.offlineChat);
@@ -276,25 +266,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
     ref.read(guideSelectionsProvider.notifier).clear();
     ref.read(agronomReviewProvider.notifier).clear();
     ref.invalidate(chatListProvider);
-  }
-
-  /// Soft-stop for the `session.expired` safety-net: tears the socket/mic/player
-  /// down but leaves the app state intact. Unlike [stop] it does NOT clear
-  /// [activeChatProvider] (so `_HomeGate` keeps [InterviewScreen] mounted with
-  /// the transcript + diagnosis on screen), nor the crop/guide/agronom state or
-  /// the chat list — those stay exclusive to [stop]. Closing the socket lets
-  /// the backend loop finalize (chat fold-in, memory) exactly as after [stop].
-  /// [_teardown] cancels `_eventSub`/`_connSub` before this returns, so no late
-  /// `SocketConnectionState.failed` can overwrite `disconnected` with an error.
-  Future<void> _suspendAfterExpiry() async {
-    await _teardown();
-    state = state.copyWith(
-      state: SessionState.disconnected,
-      pttHeld: false,
-      micLevel: 0.0,
-      clearError: true,
-    );
-    _resumeSameChat = true;
   }
 
   /// Barge-in: tell the server to stop, and flush local playback immediately.
@@ -482,16 +453,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         transcript.addSystem('Xatolik: $message ($code)');
       case SttCorrected(:final text, :final orig):
         transcript.correctFarmer(orig, text);
-      case SessionExpired():
-        // Provider-side duration limit safety-net: soft-stop only. We do NOT
-        // call stop() and do NOT clear activeChatProvider, so _HomeGate keeps
-        // InterviewScreen mounted — the farmer stays put with the full
-        // transcript + diagnosis visible and taps `Qayta boshlash` to reconnect
-        // the SAME chat. Alomat's greeting picks the conversation back up.
-        transcript.addSystem(
-          'Suhbat vaqti tugadi — davom etish uchun qayta boshlang.',
-        );
-        unawaited(_suspendAfterExpiry());
       case ToolRequestPhoto(:final callId, :final targetPart, :final reason):
         // Manual capture (budget-phone fix): do NOT switch to the camera here.
         // Park the request so the interview shows a "Rasm olish" CTA banner and

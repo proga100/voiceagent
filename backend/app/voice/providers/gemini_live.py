@@ -237,6 +237,7 @@ class GeminiLiveSession:
         auth: GoogleAuth,
         send_json: Callable[[dict], Awaitable[None]],
         send_bytes: Callable[[bytes], Awaitable[None]],
+        close_client: Callable[[], Awaitable[None]] | None = None,
         system_prompt: str,
         session_id: str = "default",
     ) -> None:
@@ -244,6 +245,7 @@ class GeminiLiveSession:
         self._auth = auth
         self._send_json = send_json
         self._send_bytes = send_bytes
+        self._close_client = close_client
         self._system_prompt = system_prompt
         self._session_id = session_id
         self._input_sample_rate = settings.audio_input_sample_rate_hz
@@ -265,8 +267,8 @@ class GeminiLiveSession:
         self._cm = None
         self._recv_task: asyncio.Task | None = None
         # Transparent session resumption: on a server-side deadline close we
-        # re-establish the SAME Google Live session via SessionResumptionConfig
-        # instead of surfacing session.expired to the client.
+        # re-establish the SAME Google Live session via SessionResumptionConfig;
+        # when that is exhausted we close the client socket (no event).
         self._resume_handle: str | None = None
         self._go_away: bool = False       # breadcrumb; reconnect trigger is the close
         self._reconnects: int = 0
@@ -674,7 +676,7 @@ class GeminiLiveSession:
                         pass
                     # Bounded: a connect that hangs would leave _reconnecting
                     # True forever, silently eating every typed message after
-                    # it. Timing out falls through to session.expired instead.
+                    # it. Timing out falls through to the socket-close path instead.
                     await asyncio.wait_for(
                         self._open_live(self._resume_handle), timeout=15.0
                     )
@@ -686,10 +688,10 @@ class GeminiLiveSession:
                     continue  # resume the outer loop on the fresh socket
                 except Exception as rexc:  # noqa: BLE001 — FAIL-OPEN
                     # A reconnect failure never crashes the WS loop: fall through
-                    # to the existing session.expired path below.
+                    # to the socket-close path below.
                     logger.warning(
                         "gemini live transparent reconnect failed, "
-                        "falling back to session.expired: %s", rexc,
+                        "falling back to closing the client socket: %s", rexc,
                     )
                 finally:
                     # Never leave _reconnecting stuck True.
@@ -700,11 +702,17 @@ class GeminiLiveSession:
                 # log line, and the client is told so it can end the session
                 # cleanly (memory finalize runs on its session.end) and offer a
                 # restart — where the greeting continues the conversation.
-                logger.info("gemini live session closed by server: %s", exc)
-                await self._send_json(
-                    {"type": "session.expired",
-                     "message": "Suhbat vaqti tugadi"}
+                # session.expired left the protocol (2026-08-05): close the
+                # farmer's socket instead — the app auto-reconnects into a
+                # FRESH Live session that resumes the stored chat + memory.
+                logger.warning(
+                    "gemini live session expired (resumption exhausted): %s", exc
                 )
+                if self._close_client is not None:
+                    try:
+                        await self._close_client()
+                    except Exception:  # noqa: BLE001
+                        pass
                 return
             logger.exception("gemini live receive failed")
             await self._send_json(

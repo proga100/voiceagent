@@ -587,13 +587,11 @@ void main() {
       expect(e.orig, 'tam');
     });
 
-    test('session.expired parses with message', () {
-      final e = ServerEvent.fromJson({
-        'type': 'session.expired',
-        'message': 'Suhbat vaqti tugadi',
-      });
-      expect(e, isA<SessionExpired>());
-      expect((e as SessionExpired).message, 'Suhbat vaqti tugadi');
+    test('session.expired left the protocol -> unknown event', () {
+      // 2026-08-05: a terminally dead Live session closes the socket instead;
+      // the app's auto-reconnect resumes the stored chat.
+      final e = ServerEvent.fromJson({'type': 'session.expired'});
+      expect(e, isA<UnknownEvent>());
     });
 
     test('text.input carries the typed message as value', () {
