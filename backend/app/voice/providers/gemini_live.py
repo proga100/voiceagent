@@ -374,6 +374,18 @@ class GeminiLiveSession:
         """A typed farmer message (`text.input`): recorded in the transcript
         like speech (input transcription never fires for typed turns) and
         answered through the normal voice output path."""
+        if self._session is None or self._reconnecting:
+            # The Live socket is down (deadline reconnect in flight, or gone).
+            # _speak_text would no-op — and silently swallowing a typed message
+            # looks like the agent ignoring the farmer, with the line ALSO
+            # landing in the transcript as something the model never heard.
+            # Tell the client instead, and record nothing.
+            await self._send_json({
+                "type": "error", "code": "not_ready",
+                "message": "Aloqa tiklanmoqda — xabar yetib bormadi, "
+                           "birozdan soʻng qayta yuboring.",
+            })
+            return
         self._flush_transcript_turn()
         self._transcript.append(f"FERMER: {text}")
         # Typed turns must flow through the same commit hook as spoken ones
@@ -656,7 +668,12 @@ class GeminiLiveSession:
                         await self._cm.__aexit__(None, None, None)
                     except Exception:  # noqa: BLE001
                         pass
-                    await self._open_live(self._resume_handle)
+                    # Bounded: a connect that hangs would leave _reconnecting
+                    # True forever, silently eating every typed message after
+                    # it. Timing out falls through to session.expired instead.
+                    await asyncio.wait_for(
+                        self._open_live(self._resume_handle), timeout=15.0
+                    )
                     self._reconnects += 1
                     logger.warning(
                         "gemini live transparent reconnect #%d (handle=%s…)",
