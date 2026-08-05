@@ -207,8 +207,6 @@ class StreamingSession:
                 )
             lat.mark("t6_first_sentence")
             if not started["tts"]:
-                if not self._s.voice_enable_filler:
-                    await self._send_json({"type": "tts.started"})
                 self._state = "speaking"
                 started["tts"] = True
             await self._send_json({"type": "llm.token", "token": uz_text + " "})
@@ -220,7 +218,6 @@ class StreamingSession:
             if self._s.voice_enable_filler:
                 filler_audio = self._filler.next_audio()
                 if filler_audio:
-                    await self._send_json({"type": "tts.started"})
                     self._state = "speaking"
                     started["tts"] = True
                     lat.mark("t9_first_audio_to_client")

@@ -782,8 +782,9 @@ class GeminiLiveSession:
                 if not sentence.strip():
                     continue
                 if not self._spoke:
+                    # tts.started removed from the wire (2026-08-05): the app
+                    # never acted on it — its handler was a no-op.
                     self._spoke = True
-                    await self._send_json({"type": "tts.started"})
                 # Azure bills per character. Counted server-side only
                 # (2026-08-05): the app stored the number but never showed it,
                 # so this was pure telemetry on the farmer's socket.

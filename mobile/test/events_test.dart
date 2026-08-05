@@ -15,12 +15,14 @@ void main() {
       expect((e as LlmToken).token, 'ha ');
     });
 
-    test('tts.started / tts.finished', () {
-      expect(ServerEvent.fromJson({'type': 'tts.started'}), isA<TtsStarted>());
+    test('tts.finished (tts.started left the protocol 2026-08-05)', () {
       expect(
         ServerEvent.fromJson({'type': 'tts.finished'}),
         isA<TtsFinished>(),
       );
+      // tts.started: the app's handler was always a no-op — an old server
+      // still sending it degrades to UnknownEvent harmlessly.
+      expect(ServerEvent.fromJson({'type': 'tts.started'}), isA<UnknownEvent>());
     });
 
     test('agent.interrupted', () {

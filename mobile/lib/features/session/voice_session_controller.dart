@@ -473,8 +473,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         transcript.onSttPartial(text);
       case LlmToken(:final token):
         transcript.onLlmToken(token);
-      case TtsStarted():
-        break;
       case TtsFinished():
         transcript.onAgentDone();
       case AgentInterrupted():

@@ -80,10 +80,6 @@ class LLMToken(BaseModel):
     token: str
 
 
-class TTSStarted(BaseModel):
-    type: Literal["tts.started"] = "tts.started"
-
-
 class TTSFinished(BaseModel):
     type: Literal["tts.finished"] = "tts.finished"
 

@@ -33,8 +33,6 @@ sealed class ServerEvent {
         return SttPartial(text: _str(json['value']));
       case 'llm.token':
         return LlmToken(token: _str(json['token']));
-      case 'tts.started':
-        return const TtsStarted();
       case 'tts.finished':
         return const TtsFinished();
       case 'agent.interrupted':
@@ -113,11 +111,6 @@ class SttPartial extends ServerEvent {
 class LlmToken extends ServerEvent {
   const LlmToken({required this.token});
   final String token;
-}
-
-/// The agent has begun speaking (TTS playback started upstream).
-class TtsStarted extends ServerEvent {
-  const TtsStarted();
 }
 
 /// The agent finished the current spoken turn.

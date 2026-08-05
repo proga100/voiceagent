@@ -42,7 +42,6 @@ from app.schemas import (
     ToolCancelled,
     ToolRequestPhoto,
     TTSFinished,
-    TTSStarted,
     UserInterrupt,
 )
 
@@ -280,7 +279,6 @@ WS_CLIENT_EVENTS: tuple[type[BaseModel], ...] = (
 WS_SERVER_EVENTS: tuple[type[BaseModel], ...] = (
     STTPartial,
     LLMToken,
-    TTSStarted,
     TTSFinished,
     AgentInterrupted,
     ErrorEvent,
