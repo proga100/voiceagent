@@ -609,11 +609,14 @@ class GeminiLiveSession:
                     if tc is not None:
                         for fc in (tc.function_calls or []):
                             await self._handle_tool_call(fc)
+                    # tool.cancelled left the protocol (2026-08-05): a
+                    # cancelled request_photo only meant "hide the CTA banner",
+                    # and a stale banner is harmless (dismiss/upload both work).
                     tcc = getattr(response, "tool_call_cancellation", None)
                     if tcc is not None:
-                        ids = getattr(tcc, "ids", None) or []
-                        await self._send_json(
-                            {"type": "tool.cancelled", "call_ids": list(ids)}
+                        logger.info(
+                            "live tool call cancelled: %s",
+                            list(getattr(tcc, "ids", None) or []),
                         )
                     sc = getattr(response, "server_content", None)
                     if sc is None:

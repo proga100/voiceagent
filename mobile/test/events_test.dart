@@ -70,13 +70,11 @@ void main() {
       expect(t.targetPart, 'leaf');
     });
 
-    test('tool.cancelled', () {
-      final e = ServerEvent.fromJson({
-        'type': 'tool.cancelled',
-        'call_ids': ['a', 'b'],
-      });
-      expect(e, isA<ToolCancelled>());
-      expect((e as ToolCancelled).callIds, ['a', 'b']);
+    test('tool.cancelled left the protocol -> unknown event', () {
+      // 2026-08-05: a cancelled request_photo only hid the CTA banner; a
+      // stale banner is harmless, so the event was dropped.
+      final e = ServerEvent.fromJson({'type': 'tool.cancelled'});
+      expect(e, isA<UnknownEvent>());
     });
 
     test('photo.received', () {

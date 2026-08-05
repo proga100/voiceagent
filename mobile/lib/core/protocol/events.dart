@@ -52,8 +52,6 @@ sealed class ServerEvent {
               ? 'leaf'
               : _str(json['target_part']),
         );
-      case 'tool.cancelled':
-        return ToolCancelled(callIds: _strList(json['call_ids']));
       case 'photo.received':
         return PhotoReceived(
           photoId: _str(json['photo_id']),
@@ -152,12 +150,6 @@ class ToolRequestPhoto extends ServerEvent {
   final String callId;
   final String reason;
   final String targetPart;
-}
-
-/// Outstanding tool calls were cancelled (e.g. the camera request expired).
-class ToolCancelled extends ServerEvent {
-  const ToolCancelled({required this.callIds});
-  final List<String> callIds;
 }
 
 /// The backend acknowledged an uploaded photo.

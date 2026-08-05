@@ -463,12 +463,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         ref
             .read(pendingPhotoRequestProvider.notifier)
             .set(callId: callId, targetPart: targetPart, reason: reason);
-      case ToolCancelled():
-        // The server withdrew the request — drop the banner. Mode is left
-        // alone: in the manual flow screen changes are farmer-driven only
-        // (the model often cancels+reissues while the camera is open, and
-        // yanking the farmer out mid-aim is disorienting).
-        ref.read(pendingPhotoRequestProvider.notifier).clear();
       case PhotoReceived(:final photoId, :final count):
         final pending = _pendingUpload;
         if (pending != null &&

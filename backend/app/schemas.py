@@ -104,11 +104,6 @@ class ToolRequestPhoto(BaseModel):
     target_part: str = "leaf"
 
 
-class ToolCancelled(BaseModel):
-    type: Literal["tool.cancelled"] = "tool.cancelled"
-    call_ids: list[str] = Field(default_factory=list)
-
-
 class PhotoReceived(BaseModel):
     type: Literal["photo.received"] = "photo.received"
     photo_id: str
