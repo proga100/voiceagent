@@ -291,10 +291,9 @@ function renderQuestion(m) {
   if (!m.options || !m.options.length) {
     const p = document.createElement('p');
     p.className = 'hint';
-    p.textContent = m.kind === 'symptom'
-      ? 'Сервер прислал options: [] — в приложении кнопки тут НЕТ, она появится '
-        + 'после нескольких ответов (crop_context: 3, symptom: 7). Разговор ведёт модель.'
-      : 'Вариантов нет — отвечайте свободной репликой.';
+    p.textContent =
+      'Javobni 🎤 mikrofon orqali gapiring yoki «Свободная реплика» '
+      + 'maydoniga erkin matn yozib yuboring.';
     box.appendChild(p);
     // Кнопки ниже нет в приложении — это ярлык тестера: сервер принимает
     // значение и до порога показа, так что диалог можно пропустить.
