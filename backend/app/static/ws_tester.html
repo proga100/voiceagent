@@ -71,6 +71,18 @@
   #log,#logOut,#logIn{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
        padding:12px;overflow-y:auto;font-family:var(--mono);font-size:.76rem}
   .ev{border-left:3px solid var(--line);padding:6px 0 6px 10px;margin-bottom:8px}
+  /* Живые субтитры: реплика фермера (stt.partial) и агента (llm.token).
+     Имя НЕ .sub — оно уже занято подзаголовком страницы выше. */
+  .cap{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;margin-top:8px;
+       border-radius:8px;font-size:.82rem;line-height:1.45;border:1px solid transparent}
+  .cap-ico{flex:none;font-size:.9rem;line-height:1.45;opacity:.9}
+  .cap-txt{flex:1;min-width:0;word-break:break-word}
+  .cap-farmer{background:var(--out-bg);border-color:var(--out);color:var(--ink)}
+  .cap-bot{background:var(--in-bg);border-color:var(--in);color:var(--ink)}
+  /* Пока фраза не закончена — мягкое мерцание курсора в конце. */
+  .cap.live .cap-txt::after{content:'▍';opacity:.55;animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
   .ev.in {border-left-color:var(--in)}
   .ev.out{border-left-color:var(--out)}
   .ev.err{border-left-color:var(--err)}
@@ -127,7 +139,14 @@
       <div class="card">
         <h2>Текущий шаг</h2>
         <div id="qbox"><p class="hint">Подключитесь — сюда придёт первый вопрос с вариантами.</p></div>
-        <div id="subs" class="hint" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:none"></div>
+        <div id="subs" style="margin-top:10px;display:none">
+          <div id="subFarmer" class="cap cap-farmer" style="display:none">
+            <span class="cap-ico">🎤</span><span class="cap-txt"></span>
+          </div>
+          <div id="subBot" class="cap cap-bot" style="display:none">
+            <span class="cap-ico">🤖</span><span class="cap-txt"></span>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -184,7 +203,8 @@
 <script>
 const $ = id => document.getElementById(id);
 let sock = null, audioBytes = 0, events = 0, ac = null, playAt = 0;
-let subsBuf = '', subsDone = false;   // agent nutqining jonli subtitri
+let botBuf = '', botDone = false;   // agent nutqi (llm.token)
+let farmerText = '';               // fermer nutqi (stt.partial)
 
 /** Нормализуем то, что ввели в поле WS URL: люди вставляют сюда адрес самой
     страницы (http://…/voice/tester) — чиним схему http→ws, хвост /tester
@@ -284,6 +304,17 @@ function send(obj) {
 }
 
 /* ---- вопрос с кнопками ---- */
+/* ---- живые субтитры ---- */
+function showSub(id, text, live) {
+  const box = $(id);
+  box.style.display = text ? 'flex' : 'none';
+  box.querySelector('.cap-txt').textContent = text;
+  box.classList.toggle('live', !!live && !!text);
+  if (text) $('subs').style.display = '';
+}
+
+function setLive(id, live) { $(id).classList.toggle('live', !!live); }
+
 function renderQuestion(m) {
   const box = $('qbox');
   // kind=symptom: savolni model OVOZ bilan aytadi va u subtitrda koʻrinadi —
@@ -617,15 +648,29 @@ $('bConn').onclick = () => {
     }
     const m = JSON.parse(e.data);
     log('in', m.type, m);
-    // Jonli subtitr: model nima deyayotgani shu yerda oqib boradi — savol
-    // matni sarlavhada TAKRORLANMAYDI, u shu subtitrning oʻzi.
-    if (m.type === 'llm.token') {
-      if (subsDone) { subsBuf = ''; subsDone = false; }
-      subsBuf += m.token;
-      $('subs').style.display = '';
-      $('subs').textContent = '🗣 ' + subsBuf;
+    // Живые субтитры. Реплика агента (llm.token) — здесь, а НЕ в заголовке
+    // шага: вопрос произносится голосом. Речь фермера — stt.partial.
+    if (m.type === 'stt.partial') {
+      farmerText = m.value || '';
+      showSub('subFarmer', farmerText, true);
+      // Фермер заговорил — прошлый ответ агента больше не «живой».
+      setLive('subBot', false);
     }
-    if (m.type === 'tts.finished') subsDone = true;
+    if (m.type === 'stt.corrected') {
+      farmerText = m.text || farmerText;
+      showSub('subFarmer', farmerText, false);
+    }
+    if (m.type === 'llm.token') {
+      if (botDone) { botBuf = ''; botDone = false; }
+      botBuf += m.token;
+      showSub('subBot', botBuf, true);
+      // Агент отвечает — реплика фермера завершена.
+      setLive('subFarmer', false);
+    }
+    if (m.type === 'tts.finished' || m.type === 'agent.interrupted') {
+      botDone = true;
+      setLive('subBot', false);
+    }
     if (m.type === 'chat.question') renderQuestion(m);
     if (m.type === 'chat.state' && m.phase === 'consult')
       $('qbox').innerHTML = '<p class="hint">Опрос завершён — фаза consult, свободная консультация.</p>';
