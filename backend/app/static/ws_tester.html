@@ -68,8 +68,8 @@
   .q .prompt{font-size:1.02rem;margin-bottom:10px}
   .q .sid{font-family:var(--mono);font-size:.72rem;color:var(--ink-3);margin-bottom:6px}
 
-  #log{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-       padding:12px;height:76vh;overflow-y:auto;font-family:var(--mono);font-size:.76rem}
+  #log,#logOut,#logIn{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+       padding:12px;overflow-y:auto;font-family:var(--mono);font-size:.76rem}
   .ev{border-left:3px solid var(--line);padding:6px 0 6px 10px;margin-bottom:8px}
   .ev.in {border-left-color:var(--in)}
   .ev.out{border-left-color:var(--out)}
@@ -155,13 +155,27 @@
     <div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <h2 style="font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;
-                   text-transform:uppercase;color:var(--ink-3);margin:0">Протокол</h2>
+                   text-transform:uppercase;color:var(--out);margin:0">OUT — отправлено</h2>
+        <button id="bCopyOut">Копировать OUT</button>
+      </div>
+      <div id="logOut" style="height:16vh"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+        <h2 style="font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;
+                   text-transform:uppercase;color:var(--in);margin:0">IN — получено</h2>
+        <button id="bCopyIn">Копировать IN</button>
+      </div>
+      <div id="logIn" style="height:16vh"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+        <h2 style="font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;
+                   text-transform:uppercase;color:var(--ink-3);margin:0">Полный протокол</h2>
         <div>
           <button id="bCopy">Копировать всё</button>
           <button id="bClr">Очистить</button>
         </div>
       </div>
-      <div id="log"></div>
+      <div id="log" style="height:52vh"></div>
     </div>
   </div>
 </div>
@@ -216,6 +230,17 @@ function log(dir, type, payload, cls) {
   }
   $('log').appendChild(d);
   $('log').scrollTop = $('log').scrollHeight;
+  // Окна показывают ТЕКУЩИЙ обмен: OUT — последнее отправленное, IN — всё,
+  // что пришло В ОТВЕТ на него (новый OUT начинает новый пакет и очищает IN).
+  // Вся история остаётся в общем протоколе ниже.
+  if (dir === 'out') {
+    $('logOut').innerHTML = '';
+    $('logOut').appendChild(d.cloneNode(true));
+    $('logIn').innerHTML = '';
+  } else if (dir === 'in') {
+    $('logIn').appendChild(d.cloneNode(true));
+    $('logIn').scrollTop = $('logIn').scrollHeight;
+  }
 }
 
 function setStatus(text, state) {
@@ -603,7 +628,18 @@ $('bConn').onclick = () => {
 $('bStop').onclick = () => sock && sock.close(1000);
 $('bTxt').onclick  = () => send({type: 'text.input', value: $('txt').value});
 $('bInt').onclick  = () => { send({type: 'user.interrupt'}); flushPlayback(); };
-$('bClr').onclick  = () => { $('log').innerHTML = ''; events = 0; $('nEv').textContent = '0'; };
+$('bClr').onclick  = () => {
+  $('log').innerHTML = ''; $('logOut').innerHTML = ''; $('logIn').innerHTML = '';
+  events = 0; $('nEv').textContent = '0';
+};
+$('bCopyOut').onclick = () => {
+  navigator.clipboard.writeText($('logOut').innerText)
+    .then(() => log('in', 'скопировано', 'OUT-протокол в буфере обмена'));
+};
+$('bCopyIn').onclick = () => {
+  navigator.clipboard.writeText($('logIn').innerText)
+    .then(() => log('in', 'скопировано', 'IN-протокол в буфере обмена'));
+};
 $('bCopy').onclick = () => {
   navigator.clipboard.writeText($('log').innerText)
     .then(() => log('in', 'скопировано', 'протокол в буфере обмена'));
