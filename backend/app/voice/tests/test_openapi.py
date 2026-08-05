@@ -13,6 +13,7 @@ REST_PATHS = {
     "/health": {"get"},
     "/crops": {"get"},
     "/chats": {"get", "post"},
+    "/photos": {"post"},
     "/chats/{chat_id}": {"get"},
     "/chats/{chat_id}/agronom-request": {"post"},
     "/chats/{chat_id}/agronom-review": {"post"},

@@ -13,7 +13,7 @@ import uuid
 
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, WebSocket
+from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
@@ -240,6 +240,78 @@ def create_app() -> FastAPI:
             # Do not reveal whether the chat exists for another owner.
             raise HTTPException(status_code=404, detail="chat not found")
         return {"data": build_detail(doc)}
+
+    # ---- Photo upload over REST (2026-08-05) --------------------------------
+    # The photo bytes leave the WebSocket: the client POSTs them here first and
+    # then sends only the returned URL in the `photo.upload` WS event.
+
+    @app.post(
+        "/photos",
+        tags=["chats"],
+        summary="Upload a farmer photo, get back its public URL",
+        response_model=None,
+        responses={
+            200: {"model": api_schemas.UploadPhotoResponse},
+            400: {"model": api_schemas.ErrorDetail,
+                  "description": "Invalid user_id / base64 / empty photo."},
+            413: {"model": api_schemas.ErrorDetail, "description": "Photo too large."},
+        },
+    )
+    async def upload_photo(body: api_schemas.UploadPhotoBody, request: Request) -> dict:
+        import asyncio
+        import base64 as b64
+
+        from app.voice.pipeline.memory import valid_device_id
+        from app.voice.pipeline.photo_store import (
+            PhotoStore, _ext_for_mime, _sanitize,
+        )
+
+        if not valid_device_id(body.user_id):
+            raise HTTPException(status_code=400, detail="invalid user_id")
+        try:
+            data = b64.b64decode(body.data or "", validate=True)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="invalid base64")
+        if not data:
+            raise HTTPException(status_code=400, detail="empty photo")
+        if len(data) > settings.max_photo_bytes:
+            raise HTTPException(status_code=413, detail="photo too large")
+
+        photo_id = (body.photo_id or "").strip() or uuid.uuid4().hex
+        chat_id = (body.chat_id or "").strip() or "nochat"
+        store = PhotoStore(settings)
+        stored = await asyncio.to_thread(
+            store.save, body.user_id, chat_id, photo_id, data, body.mime,
+        )
+        if stored is None:
+            raise HTTPException(status_code=500, detail="photo store failed")
+        if stored.startswith(("http://", "https://")):
+            url = stored  # Spaces CDN
+        else:
+            # Local-disk fallback: serve through the GET route below.
+            u, c = _sanitize(body.user_id), _sanitize(chat_id)
+            name = f"{_sanitize(photo_id)}{_ext_for_mime(body.mime)}"
+            url = f"{str(request.base_url).rstrip('/')}/photos/{u}/{c}/{name}"
+        return {"data": {"photo_id": photo_id, "url": url}}
+
+    @app.get(
+        "/photos/{user_id}/{chat_id}/{name}",
+        include_in_schema=False,  # binary serving route, not part of the JSON API
+    )
+    async def get_photo(user_id: str, chat_id: str, name: str):
+        from fastapi.responses import FileResponse
+
+        from app.voice.pipeline.photo_store import _sanitize
+
+        u, c = _sanitize(user_id), _sanitize(chat_id)
+        n = _sanitize(name)
+        if not u or not c or not n:
+            raise HTTPException(status_code=404, detail="not found")
+        path = Path(settings.photos_dir) / u / c / n
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        media = "image/png" if n.endswith(".png") else "image/jpeg"
+        return FileResponse(path, media_type=media)
 
     # ---- Agronom verification stub (docs/multichat_contract.md Phase 3 §7) ---
 

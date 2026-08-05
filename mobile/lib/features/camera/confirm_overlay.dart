@@ -8,7 +8,6 @@
 /// interview.
 library;
 
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -18,7 +17,6 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/protocol/events.dart';
 import '../interview/transcript_provider.dart';
 import '../session/app_mode.dart';
 import '../session/photo_request_provider.dart';
@@ -136,19 +134,11 @@ class _ConfirmOverlayState extends ConsumerState<ConfirmOverlay>
     }
     setState(() => _stage = _Stage.uploading);
 
-    final request = PhotoUploadRequest(
-      photoId: _photoId,
-      data: base64Encode(bytes),
-      mime: 'image/jpeg',
-      width: _width == 0 ? null : _width,
-      height: _height == 0 ? null : _height,
-      origin: widget.origin,
-    );
-
     try {
+      // 2026-08-05 protocol: bytes go over REST, the socket carries the URL.
       await ref
           .read(voiceSessionProvider.notifier)
-          .uploadPhoto(request: request);
+          .uploadPhoto(photoId: _photoId, bytes: bytes);
       if (!mounted) return;
       ref
           .read(transcriptProvider.notifier)

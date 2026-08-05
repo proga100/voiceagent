@@ -54,11 +54,15 @@ class UserInterrupt(BaseModel):
 
 
 class PhotoUpload(BaseModel):
+    """Reworked 2026-08-05: the photo bytes travel over REST (``POST /photos``
+    returns a public URL) and this WS event carries ONLY that URL in ``value``.
+    The server downloads the bytes itself. base64/mime/width/height/origin are
+    gone; ``chat_id`` guards against stale events from another chat."""
+
     type: Literal["photo.upload"] = "photo.upload"
-    data: str  # base64-encoded JPEG/PNG from the client camera
-    mime: str = "image/jpeg"
+    chat_id: str = ""
     photo_id: str | None = None
-    target_part: str | None = None
+    value: str = ""  # public URL returned by POST /photos
 
 
 class CameraCancelled(BaseModel):

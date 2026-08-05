@@ -142,7 +142,7 @@
         <input type="file" id="photoFile" accept="image/*" style="display:none">
         <button id="bPhoto" disabled>📷 Выбрать и отправить фото</button>
         <span id="photoCnt" class="hint"></span>
-        <p class="hint">Сжимается до 1536 px JPEG и уходит как photo.upload (base64 в JSON, не бинарный кадр). target_part не отправляется — сервер определяет его сам.</p>
+        <p class="hint">Сжимается до 1536 px JPEG, уходит по REST (POST /photos), по сокету едет только URL (photo.upload {value}).</p>
       </div>
 
       <div class="card">
@@ -478,13 +478,25 @@ $('photoFile').onchange = async ev => {
       dataUrl = cv.toDataURL('image/jpeg', q);
     }
     const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-    const payload = {type: 'photo.upload', photo_id: uuid4(), mime: 'image/jpeg',
-                     data: b64, width: w, height: h, origin: 'gallery'};
+    // Протокол 2026-08-05: байты уходят по REST (POST /photos -> URL),
+    // по сокету едет только URL в поле value.
+    const base = httpBase(wsUrlNorm($('url').value));
+    const photoId = uuid4();
+    const restBody = {user_id: $('uid').value, chat_id: $('cid').value.trim(),
+                      photo_id: photoId, mime: 'image/jpeg', data: b64};
+    log('out', 'POST ' + base + '/photos',
+        {...restBody, data: '<base64, ' + Math.round(b64.length * 0.75 / 1024) + ' КБ, q=' + q.toFixed(2) + '>'});
+    const r = await fetch(base + '/photos', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(restBody)});
+    if (!r.ok) { log('err', 'фото', 'POST /photos: HTTP ' + r.status); return; }
+    const url = (await r.json()).data.url;
+    const payload = {type: 'photo.upload', chat_id: $('cid').value.trim(),
+                     photo_id: photoId, value: url};
     sock.send(JSON.stringify(payload));
-    log('out', 'photo.upload',
-        {...payload, data: '<base64, ' + Math.round(b64.length * 0.75 / 1024) + ' КБ, q=' + q.toFixed(2) + '>'});
+    log('out', 'photo.upload', payload);
     if (pendingPhoto) clearTimeout(pendingPhoto.t);
-    pendingPhoto = {id: payload.photo_id, t: setTimeout(() => {
+    pendingPhoto = {id: photoId, t: setTimeout(() => {
       log('err', 'photo', 'photo.received не пришёл за 15 с — как и в приложении, считаем отправку неудачной');
       pendingPhoto = null;
     }, 15000)};

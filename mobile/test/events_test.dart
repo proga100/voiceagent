@@ -601,29 +601,25 @@ void main() {
       );
     });
 
-    test('photo.upload (Phase 5)', () {
+    test('photo.upload carries only the URL — bytes went over REST', () {
+      // 2026-08-05 protocol: base64/mime/width/height/origin are gone.
       const e = PhotoUploadRequest(
         photoId: 'p1',
-        data: 'BASE64',
-        width: 640,
-        height: 480,
-        origin: 'camera',
+        value: 'https://cdn.example/p1.jpg',
+        chatId: 'chat-1',
       );
       expect(e.toJson(), {
         'type': 'photo.upload',
+        'chat_id': 'chat-1',
         'photo_id': 'p1',
-        'mime': 'image/jpeg',
-        'data': 'BASE64',
-        'width': 640,
-        'height': 480,
-        'origin': 'camera',
+        'value': 'https://cdn.example/p1.jpg',
       });
     });
 
-    test('photo.upload carries no target_part — the server resolves it', () {
-      // The app's guess could disagree with the part request_photo just asked
-      // for; the server knows both, so it decides.
-      const e = PhotoUploadRequest(photoId: 'p1', data: 'BASE64');
+    test('photo.upload omits chat_id when unbound', () {
+      const e = PhotoUploadRequest(photoId: 'p1', value: 'https://x/p1.jpg');
+      expect(e.toJson().containsKey('chat_id'), isFalse);
+      expect(e.toJson().containsKey('data'), isFalse);
       expect(e.toJson().containsKey('target_part'), isFalse);
     });
 

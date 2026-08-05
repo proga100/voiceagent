@@ -65,6 +65,17 @@ class CreateChatBody(BaseModel):
     user_id: str = _USER_ID_FIELD
 
 
+class UploadPhotoBody(BaseModel):
+    """POST /photos request body (2026-08-05): the photo bytes now travel over
+    REST — the WebSocket ``photo.upload`` event carries only the returned URL."""
+
+    user_id: str = _USER_ID_FIELD
+    chat_id: str = ""
+    photo_id: str = ""  # client UUID; generated server-side when absent
+    mime: str = "image/jpeg"
+    data: str  # base64-encoded JPEG/PNG
+
+
 class AgronomRequestBody(BaseModel):
     """POST /chats/{chat_id}/agronom-request request body (contract P3.3)."""
 
@@ -92,6 +103,17 @@ class AgronomReviewBody(BaseModel):
 # ---------------------------------------------------------------------------
 # Response models (documentation only — never serialized through)
 # ---------------------------------------------------------------------------
+
+
+class PhotoUrlData(BaseModel):
+    """POST /photos payload: the stored photo's id + public URL."""
+
+    photo_id: str
+    url: str
+
+
+class UploadPhotoResponse(BaseModel):
+    data: PhotoUrlData
 
 
 class ErrorDetail(BaseModel):
@@ -323,9 +345,9 @@ event payload is included under **Schemas** below.
 * **Text frames** — JSON control events discriminated by `type`:
   * client → server: {_event_names(WS_CLIENT_EVENTS)}
   * server → client: {_event_names(WS_SERVER_EVENTS)}
-* **Photos** are the one exception to "binary = mic": farmer photos ride the
-  JSON plane base64-encoded (`PhotoUpload`) so a still image is never confused
-  with a mic frame.
+* **Photos** (2026-08-05): the bytes travel over REST — the client POSTs them
+  to `/photos` and sends only the returned public URL in the `PhotoUpload`
+  event (`value`); the server downloads the bytes itself.
 * The case-tool events are emitted as raw dicts on the wire; the models
   document the exact shapes both sides agreed on. Token accounting (`usage`,
   `usage_azure`) and the Azure->Gemini voice swap (`tts.fallback`) were

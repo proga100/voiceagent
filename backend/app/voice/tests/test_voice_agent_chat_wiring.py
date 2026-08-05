@@ -1,7 +1,6 @@
 """Integration-style tests for the multichat wiring in voice_agent.py: a fake
 Live-shaped session drives run_voice_agent end-to-end and asserts the exact
 chat.* WS events + REST-visible ChatStore side effects (contract §1, §4.8)."""
-import base64
 import json
 
 import pytest
@@ -103,6 +102,16 @@ def _last(ws: _FakeWebSocket, etype: str) -> dict:
     return [p for p in ws.sent_json if p["type"] == etype][-1]
 
 
+@pytest.fixture(autouse=True)
+def _stub_photo_download(monkeypatch):
+    """photo.upload carries a URL now — stub the fetch for every test here."""
+
+    async def fake_download(url, max_bytes):
+        return b"\x89PNG", "image/png"
+
+    monkeypatch.setattr(voice_agent, "_download_photo", fake_download)
+
+
 @pytest.fixture
 def settings(tmp_path):
     return Settings(
@@ -135,7 +144,7 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
         # A photo is mandatory (2026-08-05): done_photos with nothing
         # collected is rejected, so upload one first.
         {"type": "photo.upload", "photo_id": "photo-1",
-         "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png"},
+         "value": "https://cdn.example/photo-1.png"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "photo",
          "option_id": "done_photos"},
     ]
@@ -234,8 +243,7 @@ async def test_chats_disabled_ignores_chat_id(monkeypatch, tmp_path):
 
 
 async def test_photo_upload_advances_guide_photo_step(monkeypatch, settings):
-    import base64
-
+    
     store = ChatStore(settings)
     doc = store.create(DEV)
     doc.query_type = "disease_pest"
@@ -251,7 +259,7 @@ async def test_photo_upload_advances_guide_photo_step(monkeypatch, settings):
         _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
-            "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
+            "value": "https://cdn.example/photo-1.png",
         }),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
@@ -268,13 +276,11 @@ async def test_photo_upload_advances_guide_photo_step(monkeypatch, settings):
     assert saved.photos_collected == 1
 
 
-async def test_photo_message_carries_stored_url_for_agronom_ui(monkeypatch, settings):
-    """The uploaded photo's public URL (session._photos[-1].stored_path) is
-    attached to the kind="photo" message so the agronom admin UI can render the
-    photo card from the dialog stream + it surfaces in build_detail."""
-    import base64
-    from types import SimpleNamespace
-
+async def test_photo_message_carries_the_client_url_for_agronom_ui(monkeypatch, settings):
+    """2026-08-05: the URL in photo.upload's `value` (minted by POST /photos)
+    is the canonical location — it is attached verbatim to the kind="photo"
+    message so the agronom admin UI can render the photo card, and it surfaces
+    in build_detail."""
     from app.voice.chat.models import build_detail
 
     store = ChatStore(settings)
@@ -286,17 +292,15 @@ async def test_photo_message_carries_stored_url_for_agronom_ui(monkeypatch, sett
     doc.symptom_done = True
     store.save(doc)
 
-    url = "https://consortgroup-growz-application-prod.fra1.cdn.digitaloceanspaces.com/voiceagent/photos/u/c/photo-1.jpg"
+    url = "https://cdn.example/photo-1.png"  # what the WS event carries below
     session = _FakeChatSession()
-    # Mirror the real session: on_photo stored the photo and appended it.
-    session._photos = [SimpleNamespace(stored_path=url)]
 
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
         _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
-            "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
+            "value": "https://cdn.example/photo-1.png",
         }),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
@@ -317,8 +321,7 @@ async def test_rejected_photo_does_not_advance_or_count_the_guide(monkeypatch, s
     """A photo the session rejects (non-plant/oversized/over-cap -> on_photo
     returns False) must NOT emit a chat.step or bump photos_collected — else a
     farmer's rejected shots would inflate the count toward the auto-finalize cap."""
-    import base64
-
+    
     store = ChatStore(settings)
     doc = store.create(DEV)
     doc.query_type = "disease_pest"
@@ -340,7 +343,7 @@ async def test_rejected_photo_does_not_advance_or_count_the_guide(monkeypatch, s
         _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": doc.id}),
         _text_frame({
             "type": "photo.upload", "photo_id": "photo-1",
-            "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png",
+            "value": "https://cdn.example/photo-1.png",
         }),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")

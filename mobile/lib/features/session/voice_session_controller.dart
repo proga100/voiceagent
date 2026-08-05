@@ -9,11 +9,13 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/audio/lipsync_analyzer.dart';
@@ -374,14 +376,42 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
     }
   }
 
-  /// Uploads a photo and resolves with the server's photo count once the
-  /// matching `photo.received` arrives. Mic frames are paused for the duration
-  /// so the upload has the wire to itself; they resume on success, timeout or
-  /// error. Throws [TimeoutException] if no ack arrives within [timeout].
+  /// Uploads a photo (2026-08-05 protocol): the bytes go to `POST /photos`
+  /// over REST first, then the returned public URL travels over the socket as
+  /// `photo.upload {value}`. Resolves with the server's photo count once the
+  /// matching `photo.received` arrives. Mic frames are paused for the WS leg;
+  /// they resume on success, timeout or error. Throws [TimeoutException] if
+  /// no ack arrives within [timeout], [http.ClientException]/[StateError] if
+  /// the REST leg fails.
   Future<int> uploadPhoto({
-    required PhotoUploadRequest request,
+    required String photoId,
+    required Uint8List bytes,
+    String mime = 'image/jpeg',
     Duration timeout = const Duration(seconds: 15),
   }) async {
+    // REST leg — the bytes leave the device exactly once.
+    final resp = await http
+        .post(
+          Uri.parse('$httpBaseUrl/photos'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'user_id': _deviceId ?? '',
+            'chat_id': _chatId ?? '',
+            'photo_id': photoId,
+            'mime': mime,
+            'data': base64Encode(bytes),
+          }),
+        )
+        .timeout(timeout);
+    if (resp.statusCode != 200) {
+      throw StateError('photo upload failed: HTTP ${resp.statusCode}');
+    }
+    final url =
+        ((jsonDecode(resp.body) as Map)['data'] as Map)['url'] as String;
+
+    // WS leg — only the URL rides the socket.
+    final request =
+        PhotoUploadRequest(photoId: photoId, value: url, chatId: _chatId);
     final prev = _pendingUpload;
     if (prev != null && !prev.completer.isCompleted) {
       prev.completer.completeError(StateError('superseded'));

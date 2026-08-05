@@ -514,32 +514,27 @@ class TextInputRequest extends ClientEvent {
 /// shots while `plant_part` stays a single value — so echoing the app's guess
 /// back only risked disagreeing with the request the server actually made.
 class PhotoUploadRequest extends ClientEvent {
+  /// Reworked 2026-08-05: the bytes are POSTed to `/photos` over REST first;
+  /// this WS event carries only the returned public URL in `value`.
   const PhotoUploadRequest({
     required this.photoId,
-    required this.data,
-    this.mime = 'image/jpeg',
-    this.width,
-    this.height,
-    this.origin,
+    required this.value,
+    this.chatId,
   });
   final String photoId;
-  final String mime;
 
-  /// Base64-encoded image bytes.
-  final String data;
-  final int? width;
-  final int? height;
-  final String? origin;
+  /// Public photo URL returned by `POST /photos`.
+  final String value;
+
+  /// Guards against stale events from another chat; omitted when unbound.
+  final String? chatId;
 
   @override
   Map<String, dynamic> toJson() => {
     'type': 'photo.upload',
+    if (chatId != null && chatId!.isNotEmpty) 'chat_id': chatId,
     'photo_id': photoId,
-    'mime': mime,
-    'data': data,
-    if (width != null) 'width': width,
-    if (height != null) 'height': height,
-    if (origin != null) 'origin': origin,
+    'value': value,
   };
 }
 

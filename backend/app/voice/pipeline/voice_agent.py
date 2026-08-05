@@ -13,7 +13,6 @@ Two session shapes are selected by ``USE_GEMINI_LIVE_AUDIO``:
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -42,6 +41,33 @@ from app.voice.providers.factory import (
 from app.voice.providers.gemini_live import GeminiLiveSession
 
 logger = logging.getLogger("voice.agent")
+
+
+async def _download_photo(url: str, max_bytes: int) -> tuple[bytes, str] | None:
+    """Fetch the photo the client uploaded over REST (2026-08-05 protocol:
+    `photo.upload` carries a URL in `value`, never base64). Returns
+    ``(bytes, mime)`` or ``None`` on any failure — the WS loop must not die
+    because a CDN hiccuped. Module-level so tests can monkeypatch it."""
+    if not url.startswith(("http://", "https://")):
+        return None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            data = r.content
+        if not data or len(data) > max_bytes:
+            logger.warning("photo download rejected: %s bytes from %s",
+                           len(data) if data else 0, url)
+            return None
+        mime = (r.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
+        if not mime.startswith("image/"):
+            mime = "image/jpeg"
+        return data, mime
+    except Exception:  # noqa: BLE001
+        logger.warning("photo download failed: %s", url, exc_info=True)
+        return None
 
 
 def _chat_turn_recorder(store: ChatStore, doc: ChatDoc, guide: ChatGuide):
@@ -329,20 +355,29 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                         crop=crop_obj if isinstance(crop_obj, dict) else None,
                     )
             elif etype == "photo.upload" and hasattr(session, "on_photo"):
-                # Base64 JPEG/PNG from the client camera (binary frames stay mic-only).
-                # target_part is resolved server-side (the client stopped sending
-                # it). Refresh the interview's answer from the live chat doc —
-                # the guide mutates it in place, so plant_part answered mid-call
+                # New shape (2026-08-05): {chat_id, photo_id, value: <URL>} —
+                # the bytes were POSTed to /photos over REST first; the server
+                # downloads them from the URL here. target_part is resolved
+                # server-side (the client stopped sending it).
+                ev_chat = (event.get("chat_id") or "").strip()
+                if chat_doc is not None and ev_chat and ev_chat != chat_doc.id:
+                    continue  # stale event from another chat — drop silently
+                fetched = await _download_photo(
+                    (event.get("value") or "").strip(),
+                    getattr(settings, "max_photo_bytes", 2_000_000),
+                )
+                if fetched is None:
+                    continue
+                photo_bytes, photo_mime = fetched
+                # Refresh the interview's answer from the live chat doc — the
+                # guide mutates it in place, so plant_part answered mid-call
                 # is already here.
                 if chat_doc is not None and hasattr(
                     session, "interview_plant_part"
                 ):
                     session.interview_plant_part = chat_doc.plant_part or None
                 accepted = await session.on_photo(
-                    event.get("photo_id"),
-                    base64.b64decode(event.get("data", "")),
-                    event.get("mime", "image/jpeg"),
-                    event.get("target_part"),
+                    event.get("photo_id"), photo_bytes, photo_mime, None,
                 )
                 # Only count/advance the guide for photos the session actually
                 # stored — a rejected (non-plant/oversized/over-cap) upload must
@@ -350,13 +385,9 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                 if chat_guide is not None and accepted:
                     # The just-stored photo is the last in the session list; carry
                     # its public URL onto the photo message for the agronom UI.
-                    photo_url = ""
-                    try:
-                        photos = getattr(session, "_photos", None)
-                        if photos:
-                            photo_url = photos[-1].stored_path or ""
-                    except Exception:  # noqa: BLE001 — URL is best-effort metadata
-                        photo_url = ""
+                    # The client's URL IS the canonical location now (it came
+                    # from POST /photos); no need to dig out the re-stored copy.
+                    photo_url = (event.get("value") or "").strip()
                     await chat_guide.on_photo_received(
                         event.get("photo_id") or "", photo_url=photo_url,
                     )

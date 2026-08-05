@@ -1,4 +1,3 @@
-import base64
 import json
 
 from app.voice.pipeline import voice_agent
@@ -68,17 +67,34 @@ async def _run(monkeypatch, events) -> _FakeSession:
     return session
 
 
-async def test_photo_upload_decodes_and_dispatches(monkeypatch):
+async def test_photo_upload_downloads_url_and_dispatches(monkeypatch):
+    # 2026-08-05 protocol: photo.upload carries a URL; the server fetches the
+    # bytes itself. target_part is fully server-resolved (always None here).
     raw = b"\x89PNG\r\nphoto-bytes"
+
+    async def fake_download(url, max_bytes):
+        assert url == "https://cdn.example/p1.png"
+        return raw, "image/png"
+
+    monkeypatch.setattr(voice_agent, "_download_photo", fake_download)
     session = await _run(monkeypatch, [{
         "type": "photo.upload",
-        "data": base64.b64encode(raw).decode(),
-        "mime": "image/png",
         "photo_id": "p1",
-        "target_part": "leaf",
+        "value": "https://cdn.example/p1.png",
     }])
     photo_calls = [c for c in session.calls if c[0] == "photo"]
-    assert photo_calls == [("photo", "p1", raw, "image/png", "leaf")]
+    assert photo_calls == [("photo", "p1", raw, "image/png", None)]
+
+
+async def test_photo_upload_with_failed_download_is_ignored(monkeypatch):
+    async def fake_download(url, max_bytes):
+        return None
+
+    monkeypatch.setattr(voice_agent, "_download_photo", fake_download)
+    session = await _run(monkeypatch, [{
+        "type": "photo.upload", "photo_id": "p1", "value": "https://x/broken",
+    }])
+    assert not [c for c in session.calls if c[0] == "photo"]
 
 
 async def test_camera_cancelled_dispatch_and_photo_quality_ignored(monkeypatch):
