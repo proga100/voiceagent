@@ -8,7 +8,7 @@
 /// The border is green when the gate passes and red otherwise, with a short
 /// Uzbek hint — purely advisory guidance for aiming; capture happens only when
 /// the farmer taps the shutter. A gallery button offers a fallback picker (same
-/// quality checks), and the X sends `camera.cancelled` and returns to the
+/// quality checks), and the X simply returns to the
 /// interview.
 library;
 
@@ -22,10 +22,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../core/protocol/events.dart';
 import '../interview/transcript_provider.dart';
 import '../session/app_mode.dart';
-import '../session/voice_session_controller.dart';
 import 'quality/frame_quality.dart';
 import 'quality_provider.dart';
 
@@ -125,19 +123,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     }
   }
 
-  /// Emits a system bubble + `camera.cancelled` and returns to the interview.
+  /// Emits a system bubble and returns to the interview. `camera.cancelled`
+  /// was removed from the protocol (2026-08-05): request_photo is acked
+  /// immediately server-side, so nothing waits on the camera — closing it is
+  /// purely a local UI action.
   void _abort(String message) {
     ref.read(transcriptProvider.notifier).addSystem(message);
-    ref
-        .read(voiceSessionProvider.notifier)
-        .sendClient(CameraCancelledRequest(callId: widget.callId));
     ref.read(appModeProvider.notifier).toInterview();
   }
 
   void _cancel() {
-    ref
-        .read(voiceSessionProvider.notifier)
-        .sendClient(CameraCancelledRequest(callId: widget.callId));
     ref.read(appModeProvider.notifier).toInterview();
   }
 

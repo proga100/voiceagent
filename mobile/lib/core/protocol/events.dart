@@ -538,18 +538,6 @@ class PhotoUploadRequest extends ClientEvent {
   };
 }
 
-/// Phase 5: the farmer cancelled the camera for a pending request.
-class CameraCancelledRequest extends ClientEvent {
-  const CameraCancelledRequest({required this.callId});
-  final String callId;
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'type': 'camera.cancelled',
-    'call_id': callId,
-  };
-}
-
 /// Sent when the farmer TAPS a guided-flow option (or picks a crop in the
 /// sheet). A *spoken* answer instead reaches the server via the Live
 /// `select_option` tool — there is no client event for that path.

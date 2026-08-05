@@ -391,10 +391,6 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     await chat_guide.on_photo_received(
                         event.get("photo_id") or "", photo_url=photo_url,
                     )
-            elif etype == "camera.cancelled" and hasattr(session, "on_camera_cancelled"):
-                await session.on_camera_cancelled()
-                if chat_guide is not None:
-                    await chat_guide.on_camera_cancelled()
             elif etype == "debug.log":
                 # Client audio telemetry (app built with AUDIO_DEBUG=true).
                 # print(): app loggers have no handler under uvicorn's config.

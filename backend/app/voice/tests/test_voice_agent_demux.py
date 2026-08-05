@@ -97,15 +97,15 @@ async def test_photo_upload_with_failed_download_is_ignored(monkeypatch):
     assert not [c for c in session.calls if c[0] == "photo"]
 
 
-async def test_camera_cancelled_dispatch_and_photo_quality_ignored(monkeypatch):
-    # "photo.quality" left the protocol on 2026-08-05 (the app never sent it);
-    # an old client still sending it must be silently ignored, not crash.
+async def test_removed_camera_events_are_silently_ignored(monkeypatch):
+    # photo.quality AND camera.cancelled left the protocol (2026-08-05); an
+    # old client still sending them must be silently ignored, not crash.
     session = await _run(monkeypatch, [
         {"type": "photo.quality", "status": "bad", "reason": "blur", "target_part": "leaf"},
         {"type": "camera.cancelled"},
     ])
-    assert not [c for c in session.calls if c[0] == "quality"]
-    assert ("cancel",) in session.calls
+    assert not [c for c in session.calls if c[0] in ("quality", "cancel")]
+    assert session.calls[-1] == ("close",)  # loop survived both
 
 
 async def test_session_always_closed(monkeypatch):

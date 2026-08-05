@@ -65,10 +65,6 @@ class PhotoUpload(BaseModel):
     value: str = ""  # public URL returned by POST /photos
 
 
-class CameraCancelled(BaseModel):
-    type: Literal["camera.cancelled"] = "camera.cancelled"
-
-
 # ---------------------------------------------------------------------------
 # Server -> Client
 # ---------------------------------------------------------------------------

@@ -548,27 +548,9 @@ async def test_on_photo_received_noop_when_not_pending_photo(store):
     assert not any(m.kind == "photo" for m in doc.messages)
 
 
-async def test_camera_cancelled_resends_question_without_re_recording(store):
-    doc = new_chat_doc(DEV)
-    doc.query_type = "disease_pest"
-    doc.crop_id = "uuid-pomidor"
-    doc.crop_name = "Pomidor"
-    doc.plant_part = "leaf"
-    doc.symptom_done = True
-    guide, rec = _guide(store, doc)
-    await guide.start()  # emits + records the photo question once
-    question_messages_before = [m for m in doc.messages if m.kind == "question"]
-    rec.sent.clear()
-    rec.spoken.clear()
-    await guide.on_camera_cancelled()
-    assert rec.sent_types() == ["chat.question"]
-    assert rec.sent[0]["step_id"] == "photo"
-    assert rec.spoken == []  # "nothing else" (contract §4.4)
-    question_messages_after = [m for m in doc.messages if m.kind == "question"]
-    assert len(question_messages_after) == len(question_messages_before)
-
-
-# ---- multi-photo loop + deterministic diagnosis ----------------------------
+# camera.cancelled left the protocol (2026-08-05): request_photo is acked
+# immediately, so nothing server-side waits on the camera and the bar never
+# went away — the event had no remaining job.
 
 
 def _disease_pest_at_photo(doc) -> None:

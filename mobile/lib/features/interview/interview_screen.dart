@@ -17,7 +17,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'dart:io';
 
-import '../../core/protocol/events.dart';
 import '../camera/camera_screen.dart';
 import '../camera/confirm_overlay.dart';
 import '../chat/chat_providers.dart';
@@ -160,13 +159,8 @@ class _InterviewScreenState extends ConsumerState<InterviewScreen> {
                                   reason: pending.reason,
                                 ),
                             onDismiss: () {
-                              ref
-                                  .read(voiceSessionProvider.notifier)
-                                  .sendClient(
-                                    CameraCancelledRequest(
-                                      callId: pending.callId,
-                                    ),
-                                  );
+                              // camera.cancelled left the protocol
+                              // (2026-08-05) — dismissing is local-only.
                               ref
                                   .read(pendingPhotoRequestProvider.notifier)
                                   .clear();
@@ -728,7 +722,7 @@ class _PttButton extends StatelessWidget {
 /// The manual-capture call-to-action shown while a `request_photo` is pending.
 ///
 /// Tapping the banner opens the guided camera (exactly what the old auto-switch
-/// did); the trailing ✕ dismisses the request (`camera.cancelled` + clear).
+/// did); the trailing ✕ dismisses the request (local clear only).
 ///
 /// Static by design: a *single* one-shot scale-in ([TweenAnimationBuilder],
 /// ≤300 ms, runs once on appearance) draws the eye, but there is NO repeating

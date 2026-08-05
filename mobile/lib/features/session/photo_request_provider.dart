@@ -9,7 +9,7 @@
 /// Lifetime of a pending request — it survives until exactly one of:
 ///  * the farmer opens the camera AND a photo uploads successfully
 ///    ([clear], called where the confirm/upload flow completes);
-///  * the farmer dismisses the banner (banner ✕ → `camera.cancelled` + [clear]);
+///  * the farmer dismisses the banner (banner ✕ → [clear], local-only);
 ///  * a fresh `tool.request_photo` [set]s a new one, replacing it.
 library;
 

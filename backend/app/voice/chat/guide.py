@@ -944,26 +944,13 @@ class ChatGuide:
                 await self._run_deterministic_finalize()
                 await self._finish()
                 return
-            await self._resend_question("photo")           # re-shows the bar, template: on_camera_cancelled
+            await self._resend_question("photo")           # re-shows the bar (WS-only: question already in transcript)
             await self._speak_raw(
                 "[TIZIM] Rasm qabul qilindi. Fermerga qisqa ayt: yana rasm yuborsin "
                 "yoki «Tayyor» bossin."
             )
         except Exception:  # noqa: BLE001
             logger.exception("chat guide on_photo_received failed")
-            await self._degrade()
-
-    async def on_camera_cancelled(self) -> None:
-        """``camera.cancelled`` during the photo step: re-emit the same
-        question (buttons come back), nothing else (contract §4.4)."""
-        try:
-            if self.degraded or self.doc.finished:
-                return
-            if self.pending_step() != "photo":
-                return
-            await self._resend_question("photo")
-        except Exception:  # noqa: BLE001
-            logger.exception("chat guide on_camera_cancelled failed")
             await self._degrade()
 
     # ---- trigger detection (contract §4.10) --------------------------------

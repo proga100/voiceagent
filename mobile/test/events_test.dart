@@ -623,12 +623,8 @@ void main() {
       expect(e.toJson().containsKey('target_part'), isFalse);
     });
 
-    test('camera.cancelled (Phase 5)', () {
-      expect(const CameraCancelledRequest(callId: 'c7').toJson(), {
-        'type': 'camera.cancelled',
-        'call_id': 'c7',
-      });
-    });
+    // camera.cancelled left the protocol (2026-08-05): request_photo is acked
+    // immediately server-side, so closing the camera is a local UI action.
 
     test('chat.answer on the crop step carries the crop as an object', () {
       const e = ChatAnswerRequest(
