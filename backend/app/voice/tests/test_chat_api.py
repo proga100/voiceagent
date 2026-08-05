@@ -44,7 +44,8 @@ def test_create_returns_summary_shape(client):
     data = r.json()["data"]
     assert set(data.keys()) == {
         "id", "user_id", "title", "query_type", "crop_id", "crop_name",
-        "plant_part", "symptom_done", "symptom_summary", "general_question",
+        "plant_part", "symptom_done", "symptom_summary",
+        "crop_context_answers", "general_question",
         "created_at", "updated_at", "finished",
         "message_count", "last_message", "agronom_review",
     }
@@ -108,7 +109,8 @@ def test_get_chat_returns_detail_shape_with_messages_and_diagnosis(client):
     data = r.json()["data"]
     assert set(data.keys()) == {
         "id", "user_id", "title", "query_type", "crop_id", "crop_name",
-        "plant_part", "symptom_done", "symptom_summary", "general_question",
+        "plant_part", "symptom_done", "symptom_summary",
+        "crop_context_answers", "general_question",
         "created_at", "updated_at", "finished",
         "last_diagnosis", "messages", "agronom_review",
     }

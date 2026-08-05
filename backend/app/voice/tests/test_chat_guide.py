@@ -352,14 +352,17 @@ async def test_crop_context_prompt_for_unsaved_crop(store):
     question = rec.last("chat.question")
     assert question["step_id"] == "crop_context"
     assert question["kind"] == "symptom"
-    # BUG 2: the advance button is hidden until _CROP_CONTEXT_CHIP_AFTER
-    # farmer turns have accrued in this phase.
+    # Server-driven anketa: the prompt IS the first fixed question, buttons off.
+    assert question["prompt"] == "Qaysi viloyat va tumandasiz?"
     assert question["options"] == []
     prompt = rec.spoken[-1]
     assert "[SAVOL step=crop_context]" in prompt
-    assert "viloyat" in prompt and "ekilgan" in prompt
-    assert "faza" in prompt or "fazasida" in prompt
-    assert "agrotexnik" in prompt
+    # The model is told to voice ONLY the current question — the other three
+    # must not be in the brief (the reminder mentions "agrotexnika", so match
+    # the full question texts, not bare words).
+    assert "Qaysi viloyat va tumandasiz?" in prompt
+    assert "Ekin qachon ekilgan?" not in prompt
+    assert "Oxirgi agrotexnik ishlar qachon va qanday boʻlgan?" not in prompt
     # BUG 1: the exact spec reminder sentence, said first, verbatim.
     assert (
         "Keyingi safar ekinni profilingizga qoʻshib qoʻying. Shunda faza, "
@@ -1299,18 +1302,39 @@ async def test_select_option_during_crop_context_returns_D_CC_note(store):
     assert doc.crop_context_done is False
 
 
-async def test_crop_context_backstop_fires_after_8_farmer_turns(store):
+async def test_crop_context_anketa_completes_after_four_answers(store):
+    # Server-driven questionnaire: each farmer turn answers the current fixed
+    # question; the fourth answer advances deterministically — no model
+    # judgement, no to_symptom needed.
     doc = new_chat_doc(DEV)
     _disease_pest_at_crop_context(doc)
     guide, rec = _guide(store, doc)
     await guide.start()
-    for i in range(7):
-        guide.note_farmer_turn(f"javob {i}")
+
+    guide.note_farmer_turn("Toshkent, Yangiyoʻl")
     await _drain_background_tasks()
-    assert doc.crop_context_done is False  # 7 turns — not yet
-    guide.note_farmer_turn("javob 8")
+    assert doc.crop_context_answers == {"region": "Toshkent, Yangiyoʻl"}
+    assert rec.last("chat.question")["prompt"] == "Ekin qachon ekilgan?"
+    assert doc.crop_context_done is False
+
+    guide.note_farmer_turn("10 kun oldin")
     await _drain_background_tasks()
+    guide.note_farmer_turn("Usmirlik fazasida")
+    await _drain_background_tasks()
+    assert (
+        rec.last("chat.question")["prompt"]
+        == "Oxirgi agrotexnik ishlar qachon va qanday boʻlgan?"
+    )
+    guide.note_farmer_turn("Kecha sugʻordim")
+    await _drain_background_tasks()
+
     assert doc.crop_context_done is True
+    assert doc.crop_context_answers == {
+        "region": "Toshkent, Yangiyoʻl",
+        "planted_at": "10 kun oldin",
+        "growth_phase": "Usmirlik fazasida",
+        "last_agro": "Kecha sugʻordim",
+    }
     assert rec.last("chat.question")["step_id"] == "plant_part"
     assert rec.spoken[-1].startswith("[TIZIM] Ekin konteksti yetarli.")
 
@@ -1332,46 +1356,38 @@ async def test_crop_context_backstop_fires_at_most_once(store):
 # ---- BUG 2: advance-chip revealed only after enough turns ------------------
 
 
-async def test_crop_context_chip_revealed_after_3_farmer_turns(store):
+async def test_crop_context_anketa_advances_question_by_question(store):
+    # Each answer re-emits chat.question with the NEXT fixed prompt; options
+    # stay empty throughout, empty turns don't advance, and the model is told
+    # to voice exactly the current question.
     doc = new_chat_doc(DEV)
     _disease_pest_at_crop_context(doc)
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.last("chat.question")["options"] == []  # hidden from turn 1
+    assert rec.last("chat.question")["prompt"] == "Qaysi viloyat va tumandasiz?"
+    assert rec.last("chat.question")["options"] == []
 
-    guide.note_farmer_turn("javob 1")
-    guide.note_farmer_turn("javob 2")
+    guide.note_farmer_turn("   ")  # a blank turn answers nothing
     await _drain_background_tasks()
-    # still under the chip threshold -> no re-emit yet, still no options.
-    crop_context_questions = [
-        p for p in rec.sent if p["type"] == "chat.question" and p["step_id"] == "crop_context"
+    assert doc.crop_context_answers == {}
+    ccq = [
+        p for p in rec.sent
+        if p["type"] == "chat.question" and p["step_id"] == "crop_context"
     ]
-    assert len(crop_context_questions) == 1
-    assert crop_context_questions[-1]["options"] == []
+    assert len(ccq) == 1
 
-    guide.note_farmer_turn("javob 3")
+    guide.note_farmer_turn("Yangiyoʻl")
     await _drain_background_tasks()
-    crop_context_questions = [
-        p for p in rec.sent if p["type"] == "chat.question" and p["step_id"] == "crop_context"
+    ccq = [
+        p for p in rec.sent
+        if p["type"] == "chat.question" and p["step_id"] == "crop_context"
     ]
-    # re-emitted exactly once, now with the to_symptom button.
-    assert len(crop_context_questions) == 2
-    assert crop_context_questions[-1]["options"] == [
-        {"id": "to_symptom", "label": "Belgilarga oʻtish"}
-    ]
+    assert len(ccq) == 2
+    assert ccq[-1]["prompt"] == "Ekin qachon ekilgan?"
+    assert ccq[-1]["options"] == []
+    assert "Ekin qachon ekilgan?" in rec.spoken[-1]
+    assert rec.spoken[-1].startswith("[TIZIM] Javob qabul qilindi.")
     assert doc.crop_context_done is False  # the phase itself did not advance
-    # the reveal is WS-only (_resend_question): no duplicate transcript row.
-    captions = [m for m in doc.messages if m.kind == "question" and m.text == UZ["qCropContext"]]
-    assert len(captions) == 1
-
-    # further turns (short of the 8-turn backstop) must not re-emit again.
-    guide.note_farmer_turn("javob 4")
-    guide.note_farmer_turn("javob 5")
-    await _drain_background_tasks()
-    crop_context_questions = [
-        p for p in rec.sent if p["type"] == "chat.question" and p["step_id"] == "crop_context"
-    ]
-    assert len(crop_context_questions) == 2
 
 
 async def test_crop_context_tap_advance_before_chip_threshold_still_works(store):

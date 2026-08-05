@@ -130,6 +130,7 @@ def test_build_summary_shape_empty_chat():
         "plant_part": "",
         "symptom_done": False,
         "symptom_summary": "",
+        "crop_context_answers": {},
         "general_question": "",
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,

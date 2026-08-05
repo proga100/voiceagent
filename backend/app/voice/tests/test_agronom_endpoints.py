@@ -118,7 +118,8 @@ def test_response_carries_full_chat_summary_shape(client):
     data = r.json()["data"]
     assert set(data.keys()) == {
         "id", "user_id", "title", "query_type", "crop_id", "crop_name",
-        "plant_part", "symptom_done", "symptom_summary", "general_question",
+        "plant_part", "symptom_done", "symptom_summary",
+        "crop_context_answers", "general_question",
         "created_at", "updated_at", "finished",
         "message_count", "last_message", "agronom_review",
     }

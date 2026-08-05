@@ -122,6 +122,17 @@ PLANT_PART_OPTIONS: list[tuple[str, str]] = [
 
 STEP_ORDER = ["query_type", "crop", "crop_context", "plant_part", "symptom", "photo"]
 
+# §1.3 crop-context anketa — SERVER-driven, fixed order (team decision:
+# question logic lives in the backend, the model only voices each question).
+# field-key -> the exact question sent as chat.question.prompt AND stored
+# under ChatDoc.crop_context_answers[field].
+CROP_CONTEXT_QUESTIONS: list[tuple[str, str]] = [
+    ("region", "Qaysi viloyat va tumandasiz?"),
+    ("planted_at", "Ekin qachon ekilgan?"),
+    ("growth_phase", "Hozir taxminan qaysi rivojlanish fazasida?"),
+    ("last_agro", "Oxirgi agrotexnik ishlar qachon va qanday boʻlgan?"),
+]
+
 STEPS: dict[str, dict] = {
     "query_type": {
         "kind": "buttons",
@@ -252,6 +263,9 @@ class ChatDoc(BaseModel):
     plant_part: str = ""  # "" | one of TARGET_PARTS
     crop_in_profile: bool = True  # §1.2: committed crop found in the Growz profile
     crop_context_done: bool = False  # §1.3 crop-context dialogue completed (to_symptom)
+    # §1.3 anketa answers, keyed by CROP_CONTEXT_QUESTIONS field names.
+    # Persisted so a reconnect resumes at the first unanswered question.
+    crop_context_answers: dict[str, str] = Field(default_factory=dict)
     symptom_done: bool = False  # symptom dialogue completed (to_photo)
     symptom_summary: str = ""  # to_photo's summary arg, <=300 chars
     photos_collected: int = 0  # multi-photo loop counter; photos themselves are never stored (§3.2)
@@ -387,6 +401,7 @@ def build_summary(doc: ChatDoc) -> dict:
         "plant_part": doc.plant_part,
         "symptom_done": doc.symptom_done,
         "symptom_summary": doc.symptom_summary,
+        "crop_context_answers": dict(doc.crop_context_answers),
         "general_question": doc.general_question,
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,
@@ -412,6 +427,7 @@ def build_detail(doc: ChatDoc) -> dict:
         "plant_part": doc.plant_part,
         "symptom_done": doc.symptom_done,
         "symptom_summary": doc.symptom_summary,
+        "crop_context_answers": dict(doc.crop_context_answers),
         "general_question": doc.general_question,
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,

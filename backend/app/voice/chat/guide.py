@@ -28,7 +28,9 @@ import re
 from typing import Awaitable, Callable
 
 from app.config import Settings
-from app.voice.chat.models import STEPS, TRIGGER_WORDS, UZ, ChatDoc, derive_title
+from app.voice.chat.models import (
+    CROP_CONTEXT_QUESTIONS, STEPS, TRIGGER_WORDS, UZ, ChatDoc, derive_title,
+)
 from app.voice.chat.store import ChatStore
 
 logger = logging.getLogger("voice.chat.guide")
@@ -175,26 +177,15 @@ _CROP_CONTEXT_REMINDER = (
     "agrotexnika va tarixni hisobga olib, aniqroq tavsiya bera olaman."
 )
 
-# §1.3 crop-context phase (crop NOT in the Growz profile): gather the profile
-# facts by ASKING, one at a time, BEFORE the symptom dialogue. Mirrors _SY_BODY.
-# BUG 1 fix: Rais must (a) say _CROP_CONTEXT_REMINDER aynan shu jumla bilan —
-# as its OWN first utterance, never paraphrased and never merged with a
-# question — and only THEN (b) ask the four §1.3 questions ONE PER TURN, in
-# order, never two in one message.
-_CROP_CONTEXT_BODY = (
-    f"AVVAL, aynan shu jumla bilan boshla — soʻzini oʻzgartirma, boshqa gap "
-    f"bilan qoʻshib yuborma, bu ALOHIDA gap boʻlsin: «{_CROP_CONTEXT_REMINDER}» "
-    "Shundan KEYIN, boshqa xabarda, ekin haqida qisqa kontekst yigʻishga "
-    "oʻt. Har safar FAQAT BITTA qisqa savol ber — hech qachon ikkita savol "
-    "bir xabarda boʻlmasin va savolni eslatma bilan qoʻshib yuborma. "
-    "Savollarni shu tartibda, bittadan ber: «Qaysi viloyat va "
-    "tumandasiz?», soʻng «Ekin qachon ekilgan?», soʻng «Hozir taxminan "
-    "qaysi rivojlanish fazasida?», soʻng «Oxirgi agrotexnik ishlar qachon "
-    "va qanday boʻlgan?». Har bir savoldan keyin fermer javobini kut, "
-    "keyingi savolga shundan keyingina oʻt. Javoblarni keyin tashxisda "
-    "ishlat. Toʻrttala maʼlumot ham yigʻilgach DARHOL to_symptom "
-    "funksiyasini chaqir. Fermer keyinroq ekranda «Belgilarga oʻtish» "
-    "tugmasini koʻrishi mumkin — bosilsa [TIZIM] xabari keladi."
+# §1.3 crop-context is a SERVER-driven questionnaire now: the four questions
+# live in CROP_CONTEXT_QUESTIONS (models.py) and each is sent as its own
+# chat.question; the model only VOICES the current one (guide._cc_body).
+# The reminder above still opens the phase, verbatim, per the spec.
+
+# Spoken directive for each follow-up anketa question (after an answer landed).
+_SCRIPT_CC_ASK = (
+    "[TIZIM] Javob qabul qilindi. [SAVOL step=crop_context] Fermerdan FAQAT "
+    "aynan shu savolni soʻra — qisqa, boshqa savol yoki izoh qoʻshma: «{q}»"
 )
 
 _SCRIPT_CC_B = (
@@ -291,7 +282,6 @@ _CROP_CONTEXT_TURN_CAP = 8
 # question is re-emitted once, now WITH the button. Both stay well under the
 # phase's backstop cap above, which still fires regardless (see
 # note_farmer_turn).
-_CROP_CONTEXT_CHIP_AFTER = 3
 _SYMPTOM_CHIP_AFTER = 7
 
 
@@ -379,7 +369,7 @@ def _profile_injection_text(profile: dict) -> str:
 
 # The saved-planting profile, injected on crop commit (hidden turn on tap,
 # folded into the tool-ack on voice). For an UNSAVED crop the profile questions
-# are driven by the crop_context phase (_CROP_CONTEXT_BODY) instead.
+# are driven by the crop_context anketa (CROP_CONTEXT_QUESTIONS) instead.
 _PROFILE_CONTEXT = (
     "[Ichki maʼlumot — Growz profilidan, ovoz chiqarib takrorlama] {facts}. "
     "Fermer oʻzi soʻrasa (masalan «ekinim haqida nima bilasan?») shu "
@@ -494,7 +484,6 @@ class ChatGuide:
         # Crop-context-phase backstop counter (mirror of contract §4.8).
         self._crop_context_turns = 0
         self._crop_context_backstop_scheduled = False
-        self._crop_context_chip_shown = False
         # General-phase trigger offer (contract §4.10): at most one per
         # session, whether accepted or declined.
         self._general_offered = False
@@ -560,6 +549,33 @@ class ChatGuide:
             chips = []
         self._crop_chips = chips
         return chips
+
+    # ---- §1.3 server-driven crop-context anketa -------------------------
+
+    def _cc_pending(self) -> tuple[str, str] | None:
+        """First unanswered anketa question as (field, text); None = done."""
+        for key, q in CROP_CONTEXT_QUESTIONS:
+            if key not in self.doc.crop_context_answers:
+                return key, q
+        return None
+
+    def _cc_body(self) -> str:
+        """The spoken brief for entering (or resuming) the anketa: the exact
+        current question, prefixed by the verbatim reminder on FIRST entry
+        only — a resume mid-anketa must not repeat it."""
+        pend = self._cc_pending()
+        q = pend[1] if pend else STEPS["crop_context"]["prompt"]
+        ask = (
+            f"Fermerdan FAQAT aynan shu savolni soʻra — qisqa, boshqa savol "
+            f"yoki izoh qoʻshma: «{q}»"
+        )
+        if self.doc.crop_context_answers:
+            return ask
+        return (
+            f"AVVAL, aynan shu jumla bilan boshla — soʻzini oʻzgartirma, "
+            f"alohida gap boʻlsin: «{_CROP_CONTEXT_REMINDER}» Shundan KEYIN "
+            + ask
+        )
 
     async def _crop_question_options(self) -> list[tuple[str, str]]:
         """The «Ha»/«Yoʻq» logic lives HERE, not in the app: the question
@@ -831,7 +847,7 @@ class ChatGuide:
             await self._emit_state(phase)
             await self._emit_question(step_id)
             if step_id == "crop_context":
-                await self._speak_raw(_SCRIPT_CC_A.format(body=_CROP_CONTEXT_BODY))
+                await self._speak_raw(_SCRIPT_CC_A.format(body=self._cc_body()))
                 return
             if step_id == "symptom":
                 await self._speak_raw(_SCRIPT_SY_A.format(body=self._symptom_body()))
@@ -969,16 +985,19 @@ class ChatGuide:
                     asyncio.create_task(self._offer_diagnostic())
             elif pending == "crop_context":
                 self._crop_context_turns += 1
-                # BUG 2 fix: reveal the to_symptom button once, the moment
-                # the counter reaches the threshold (checked BEFORE the
-                # backstop below so both can fire on the same turn if the
-                # thresholds ever collide).
-                if (
-                    self._crop_context_turns >= _CROP_CONTEXT_CHIP_AFTER
-                    and not self._crop_context_chip_shown
-                ):
-                    self._crop_context_chip_shown = True
-                    asyncio.create_task(self._crop_context_chip_reveal())
+                # Server-driven anketa (§1.3): the farmer's turn IS the answer
+                # to the current fixed question. Store it and either ask the
+                # next one or advance — all deterministic, no model judgement.
+                pend = self._cc_pending()
+                if pend is not None and text.strip():
+                    self.doc.crop_context_answers[pend[0]] = text.strip()[:200]
+                    self._save()
+                    if self._cc_pending() is None:
+                        asyncio.create_task(self._cc_complete())
+                    else:
+                        asyncio.create_task(self._cc_ask_next())
+                # Turn cap stays as the last-resort backstop (e.g. a client
+                # that keeps committing empty turns).
                 if (
                     self._crop_context_turns >= _CROP_CONTEXT_TURN_CAP
                     and not self._crop_context_backstop_scheduled
@@ -1014,19 +1033,33 @@ class ChatGuide:
             logger.exception("chat guide offer_diagnostic failed")
             await self._degrade()
 
-    async def _crop_context_chip_reveal(self) -> None:
-        """BUG 2 fix: farmer-turn count crossed _CROP_CONTEXT_CHIP_AFTER —
-        re-emit the still-pending crop_context question once, now WITH the
-        to_symptom button. Guarded (like the backstops) against a phase
-        change that already happened while this task was scheduled."""
+    async def _cc_ask_next(self) -> None:
+        """An anketa answer just landed — send the NEXT fixed question as its
+        own chat.question and have the model voice exactly it. Guarded (like
+        the backstops) against a phase change while this task was scheduled."""
         try:
             if self.degraded or self.doc.finished or self.pending_step() != "crop_context":
                 return
-            # _resend_question, NOT _emit_question: the question is already in
-            # the transcript (appended on first emit) — mirror on_camera_cancelled.
-            await self._resend_question("crop_context")
+            pend = self._cc_pending()
+            if pend is None:
+                return
+            await self._emit_question("crop_context")
+            await self._speak_raw(_SCRIPT_CC_ASK.format(q=pend[1]))
         except Exception:  # noqa: BLE001
-            logger.exception("chat guide crop_context chip reveal failed")
+            logger.exception("chat guide crop_context ask-next failed")
+            await self._degrade()
+
+    async def _cc_complete(self) -> None:
+        """All four anketa answers stored — advance deterministically.
+        backstop=True picks the right spoken script («Ekin konteksti
+        yetarli») — nobody tapped anything, so the tap/tool wordings fit
+        worse."""
+        try:
+            if self.degraded or self.doc.finished or self.pending_step() != "crop_context":
+                return
+            await self._advance_from_crop_context(via_voice=False, backstop=True)
+        except Exception:  # noqa: BLE001
+            logger.exception("chat guide crop_context complete failed")
             await self._degrade()
 
     async def _symptom_chip_reveal(self) -> None:
@@ -1118,7 +1151,7 @@ class ChatGuide:
         await self._emit_question(next_step)
 
         if next_step == "crop_context":
-            body = _CROP_CONTEXT_BODY
+            body = self._cc_body()
             if via_voice:
                 return _SCRIPT_CC_C.format(label=label, body=body)
             await self._speak_raw(_SCRIPT_CC_B.format(label=label, body=body))
@@ -1268,6 +1301,10 @@ class ChatGuide:
         }
         if d.plant_part:
             summary["location_on_plant"] = _label_for("plant_part", d.plant_part) or d.plant_part
+        if d.crop_context_answers:
+            # §1.3 anketa answers are structured now — hand them to the
+            # diagnosis model (its input is the summary JSON verbatim).
+            summary["farmer_context"] = dict(d.crop_context_answers)
         await self._finalize_case(summary)
 
     async def _finish(self) -> None:
@@ -1323,19 +1360,30 @@ class ChatGuide:
             }
         )
 
+    def _prompt_for(self, step_id: str) -> str:
+        """crop_context's prompt is the CURRENT anketa question — the fixed
+        step title is only the fallback once all four are answered."""
+        if step_id == "crop_context":
+            pend = self._cc_pending()
+            if pend is not None:
+                return pend[1]
+        return STEPS[step_id]["prompt"]
+
     async def _resend_question(self, step_id: str) -> None:
         step = STEPS[step_id]
         if step_id == "crop":
             options = await self._crop_question_options()
         else:
             options = step["options"]
-        # BUG 2 fix: hide the advance button on crop_context/symptom until
-        # the farmer has answered enough in that phase (see
-        # _CROP_CONTEXT_CHIP_AFTER / _SYMPTOM_CHIP_AFTER above) — the
-        # underlying tap/tool route is still accepted early, only the visual
-        # affordance is delayed.
-        if step_id == "crop_context" and self._crop_context_turns < _CROP_CONTEXT_CHIP_AFTER:
+        if step_id == "crop_context":
+            # Server-driven anketa: the farmer answers by voice/text, buttons
+            # are pointless while it runs (to_symptom stays accepted as the
+            # skip route for taps/tools).
             options = []
+        # BUG 2 fix: hide the advance button on symptom until the farmer has
+        # answered enough in that phase (_SYMPTOM_CHIP_AFTER) — the underlying
+        # tap/tool route is still accepted early, only the visual affordance
+        # is delayed.
         elif step_id == "symptom" and self._symptom_turns < _SYMPTOM_CHIP_AFTER:
             options = []
         await self._send_json(
@@ -1343,7 +1391,7 @@ class ChatGuide:
                 "type": "chat.question",
                 "chat_id": self.doc.id,
                 "step_id": step_id,
-                "prompt": step["prompt"],
+                "prompt": self._prompt_for(step_id),
                 "kind": step["kind"],
                 "options": [{"id": oid, "label": label} for oid, label in options],
             }
@@ -1351,7 +1399,7 @@ class ChatGuide:
 
     async def _emit_question(self, step_id: str) -> None:
         await self._resend_question(step_id)
-        self._store_append(role="rais", kind="question", text=STEPS[step_id]["prompt"])
+        self._store_append(role="rais", kind="question", text=self._prompt_for(step_id))
 
     async def _emit_step(self, step_id: str, option_id: str, value: str, label: str) -> None:
         await self._send_json(

@@ -292,12 +292,19 @@ function renderQuestion(m) {
     const p = document.createElement('p');
     p.className = 'hint';
     p.textContent = m.kind === 'symptom'
-      ? 'Вариантов пока нет — кнопка появится после нескольких ответов. Можно ответить сразу:'
+      ? 'Сервер прислал options: [] — в приложении кнопки тут НЕТ, она появится '
+        + 'после нескольких ответов (crop_context: 3, symptom: 7). Разговор ведёт модель.'
       : 'Вариантов нет — отвечайте свободной репликой.';
     box.appendChild(p);
-    // на шагах crop_context / symptom кнопка скрыта, но значение принимается
+    // Кнопки ниже нет в приложении — это ярлык тестера: сервер принимает
+    // значение и до порога показа, так что диалог можно пропустить.
     const forced = {crop_context: 'to_symptom', symptom: 'to_photo'}[m.step_id];
-    if (forced) box.appendChild(mkBtn(forced, forced, m.step_id));
+    if (forced) {
+      const b = mkBtn(forced, '⏭ ' + forced + ' — ярлык тестера, пропустить диалог',
+                      m.step_id);
+      b.style.opacity = '.75';
+      box.appendChild(b);
+    }
     return;
   }
   m.options.forEach(o => box.appendChild(mkBtn(o.id, o.label, m.step_id)));
