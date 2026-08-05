@@ -295,15 +295,6 @@ function renderQuestion(m) {
       'Javobni 🎤 mikrofon orqali gapiring yoki «Свободная реплика» '
       + 'maydoniga erkin matn yozib yuboring.';
     box.appendChild(p);
-    // Кнопки ниже нет в приложении — это ярлык тестера: сервер принимает
-    // значение и до порога показа, так что диалог можно пропустить.
-    const forced = {crop_context: 'to_symptom', symptom: 'to_photo'}[m.step_id];
-    if (forced) {
-      const b = mkBtn(forced, '⏭ ' + forced + ' — ярлык тестера, пропустить диалог',
-                      m.step_id);
-      b.style.opacity = '.75';
-      box.appendChild(b);
-    }
     return;
   }
   m.options.forEach(o => box.appendChild(mkBtn(o.id, o.label, m.step_id)));
