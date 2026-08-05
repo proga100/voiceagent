@@ -1407,18 +1407,25 @@ class ChatGuide:
         every step carries the phase AFTER it plus the selections snapshot.
         ``phase`` overrides the derived value where the step itself causes
         the transition (doc flags may lag the logical phase)."""
-        await self._send_json(
-            {
-                "type": "chat.step",
-                "chat_id": self.doc.id,
-                "step_id": step_id,
-                "option_id": option_id,
-                "value": value,
-                "label": label,
-                "phase": phase if phase is not None else self._phase_now(),
-                "selections": self._selections(),
-            }
-        )
+        # Lean wire (2026-08-05): empty fields are OMITTED — a fresh-chat
+        # snapshot is just {type, chat_id, step_id, phase}. Clients treat an
+        # absent option_id exactly like "" (snapshot, not an answer).
+        payload = {
+            "type": "chat.step",
+            "chat_id": self.doc.id,
+            "step_id": step_id,
+            "phase": phase if phase is not None else self._phase_now(),
+        }
+        if option_id:
+            payload["option_id"] = option_id
+        if value:
+            payload["value"] = value
+        if label:
+            payload["label"] = label
+        picked = {k: v for k, v in self._selections().items() if v}
+        if picked:
+            payload["selections"] = picked
+        await self._send_json(payload)
 
     async def _emit_snapshot(self, phase: str) -> None:
         """The former chat.state: a chat.step with an EMPTY option_id — a

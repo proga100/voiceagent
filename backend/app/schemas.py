@@ -177,6 +177,8 @@ class ChatStep(BaseModel):
     type: Literal["chat.step"] = "chat.step"
     chat_id: str
     step_id: str
+    # Empty fields are OMITTED on the wire: a state snapshot carries only
+    # {type, chat_id, step_id, phase} (+ non-empty selections).
     option_id: str = ""
     value: str = ""
     label: str = ""

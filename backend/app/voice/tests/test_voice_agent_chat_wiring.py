@@ -170,8 +170,8 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
         "chat.step", "chat.question",   # photo.upload -> counted, bar re-shown
         "chat.step", "chat.step",       # done_photos (consult) + finish snapshot
     ]
-    assert ws.sent_json[0]["option_id"] == ""      # connect snapshot
-    assert ws.sent_json[-1]["option_id"] == ""     # finish snapshot
+    assert ws.sent_json[0].get("option_id", "") == ""      # connect snapshot
+    assert ws.sent_json[-1].get("option_id", "") == ""     # finish snapshot
     assert ws.sent_json[-1]["phase"] == "consult"
     assert ws.sent_json[0]["phase"] == "guide"
     assert ws.sent_json[1]["step_id"] == "query_type"

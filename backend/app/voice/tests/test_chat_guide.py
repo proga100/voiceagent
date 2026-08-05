@@ -169,14 +169,11 @@ async def test_start_new_chat_emits_state_question_and_script_a(store):
     # chat.state merged into chat.step: the connect snapshot is a chat.step
     # with an EMPTY option_id carrying phase + selections.
     assert state["type"] == "chat.step"
-    assert state["option_id"] == ""
-    assert {
-        "chat_id": doc.id, "phase": "guide",
-        "selections": {
-            "query_type": "", "crop_id": "", "crop_name": "",
-            "plant_part": "", "photo_id": "",
-        },
-    }.items() <= state.items()
+    assert state.get("option_id", "") == ""
+    # Lean wire: empty selections are omitted entirely on a fresh chat.
+    assert {"chat_id": doc.id, "phase": "guide"}.items() <= state.items()
+    assert "selections" not in state
+    assert state["step_id"] == "query_type"
     question = rec.sent[1]
     assert question["step_id"] == "query_type"
     assert question["kind"] == "buttons"
@@ -413,7 +410,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "query_type",
-        "option_id": "disease_pest", "value": "", "label": "Kasalliklar va zararkunandalar",
+        "option_id": "disease_pest", "label": "Kasalliklar va zararkunandalar",
     }.items()
     assert rec.last("chat.question")["step_id"] == "crop"
     assert rec.spoken[-1].startswith("[TIZIM] Fermer tugma orqali")
@@ -455,7 +452,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "symptom",
-        "option_id": "to_photo", "value": "", "label": "Rasmga oʻtish",
+        "option_id": "to_photo", "label": "Rasmga oʻtish",
     }.items()
     assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "guide"
@@ -1246,7 +1243,7 @@ async def test_to_symptom_tool_advances_to_plant_part_step(store):
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "crop_context",
-        "option_id": "to_symptom", "value": "", "label": "Belgilarga oʻtish",
+        "option_id": "to_symptom", "label": "Belgilarga oʻtish",
     }.items()
     # Advances into plant_part (the FIRST §2 question), not straight to symptom.
     assert rec.sent[-2]["type"] == "chat.step" and rec.sent[-2]["phase"] == "guide"
@@ -1477,7 +1474,7 @@ async def test_query_type_general_accepted_by_tap_enters_general_phase(store):
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "query_type",
-        "option_id": "general", "value": "", "label": "Umumiy savol berish",
+        "option_id": "general", "label": "Umumiy savol berish",
     }.items()
     assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "general"
@@ -1578,7 +1575,7 @@ async def test_diag_offer_switch_diag_tap_reenters_diagnostic_at_crop(store):
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "diag_offer",
-        "option_id": "switch_diag", "value": "", "label": "Ha, aniqlaymiz",
+        "option_id": "switch_diag", "label": "Ha, aniqlaymiz",
     }.items()
     assert rec.sent_types()[-2:] == ["chat.step", "chat.question"]
     assert rec.sent[-2]["phase"] == "guide"
@@ -1643,7 +1640,7 @@ async def test_diag_offer_stay_general_re_sends_without_duplicate_message(store)
     step_evt = rec.last("chat.step")
     assert step_evt.items() >= {
         "type": "chat.step", "chat_id": doc.id, "step_id": "diag_offer",
-        "option_id": "stay_general", "value": "", "label": "Yoʻq, davom etamiz",
+        "option_id": "stay_general", "label": "Yoʻq, davom etamiz",
     }.items()
     assert rec.last("chat.question")["step_id"] == "general"
     assert rec.spoken[-1] == (
