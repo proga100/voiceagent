@@ -413,10 +413,13 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
             elif etype == "chat.answer" and chat_guide is not None:
                 if event.get("chat_id") == chat_guide.doc.id:
                     crop_obj = event.get("crop")
+                    # "value" left chat.answer (2026-08-05): every client
+                    # always sent "" — the crop name (its only real payload
+                    # historically) rides in crop.name now.
                     await chat_guide.on_answer(
                         event.get("step_id") or "",
                         event.get("option_id") or "",
-                        event.get("value") or "",
+                        "",
                         crop=crop_obj if isinstance(crop_obj, dict) else None,
                     )
             elif etype == "photo.upload" and hasattr(session, "on_photo"):

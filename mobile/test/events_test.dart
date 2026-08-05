@@ -645,36 +645,19 @@ void main() {
         'chat_id': 'c1',
         'step_id': 'crop',
         'option_id': 'open_crop_picker',
-        'value': '',
         'crop': {'id': '6a91-growz-uuid', 'name': 'Pomidor'},
       });
     });
 
-    test('chat.answer (buttons/crop_picker answer)', () {
-      const e = ChatAnswerRequest(
-        chatId: 'c1',
-        stepId: 'crop',
-        optionId: '6a91-growz-uuid',
-        value: 'Pomidor',
-      );
-      expect(e.toJson(), {
-        'type': 'chat.answer',
-        'chat_id': 'c1',
-        'step_id': 'crop',
-        'option_id': '6a91-growz-uuid',
-        'value': 'Pomidor',
-      });
-    });
-
-    test('chat.answer defaults option_id and value to empty', () {
+    test('chat.answer carries no value key (removed 2026-08-05)', () {
       const e = ChatAnswerRequest(chatId: 'c1', stepId: 'query_type');
       expect(e.toJson(), {
         'type': 'chat.answer',
         'chat_id': 'c1',
         'step_id': 'query_type',
         'option_id': '',
-        'value': '',
       });
+      expect(e.toJson().containsKey('value'), isFalse);
     });
 
     // --- v2 (docs/multichat_contract.md §1.5): new accepted step ids/values.
@@ -691,7 +674,6 @@ void main() {
         'chat_id': 'c1',
         'step_id': 'query_type',
         'option_id': 'general',
-        'value': '',
       });
     });
 
@@ -706,7 +688,6 @@ void main() {
         'chat_id': 'c1',
         'step_id': 'symptom',
         'option_id': 'to_photo',
-        'value': '',
       });
     });
 
@@ -731,14 +712,15 @@ void main() {
         chatId: 'c1',
         stepId: 'crop',
         optionId: '6a91-growz-uuid',
-        value: 'Pomidor',
+        cropId: '6a91-growz-uuid',
+        cropName: 'Pomidor',
       );
       expect(e.toJson(), {
         'type': 'chat.answer',
         'chat_id': 'c1',
         'step_id': 'crop',
         'option_id': '6a91-growz-uuid',
-        'value': 'Pomidor',
+        'crop': {'id': '6a91-growz-uuid', 'name': 'Pomidor'},
       });
     });
   });

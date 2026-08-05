@@ -242,7 +242,6 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
   void _answer(
     ChatQuestion question, {
     required String optionId,
-    String value = '',
     String? cropId,
     String? cropName,
   }) {
@@ -253,7 +252,6 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
     ref.read(voiceSessionProvider.notifier).sendChatAnswer(
           question.stepId,
           optionId: optionId,
-          value: value,
           cropId: cropId,
           cropName: cropName,
         );

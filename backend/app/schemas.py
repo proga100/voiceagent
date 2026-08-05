@@ -146,7 +146,8 @@ class ChatAnswer(BaseModel):
     chat_id: str = ""
     step_id: str = ""
     option_id: str = ""
-    value: str = ""
+    # "value" was removed 2026-08-05 — the crop name (its only payload) rides
+    # in crop.name; button steps never carried anything.
     # Only on the crop step; other steps omit it.
     crop: ChatAnswerCrop | None = None
 

@@ -132,7 +132,8 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "query_type",
          "option_id": "disease_pest"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "crop",
-         "option_id": "uuid-pomidor", "value": "Pomidor"},
+         "option_id": "uuid-pomidor",
+         "crop": {"id": "uuid-pomidor", "name": "Pomidor"}},
         # "Pomidor" is not in the (disabled) Growz profile -> crop routes
         # DIRECTLY into the §1.3 crop_context phase, BEFORE plant_part.
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "crop_context",

@@ -296,7 +296,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
   void sendChatAnswer(
     String stepId, {
     String optionId = '',
-    String value = '',
     String? cropId,
     String? cropName,
   }) {
@@ -307,7 +306,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         chatId: chatId,
         stepId: stepId,
         optionId: optionId,
-        value: value,
         cropId: cropId,
         cropName: cropName,
       ),

@@ -352,8 +352,9 @@ function mkBtn(id, label, step) {
       openCropPicker(step);
       return;
     }
+    // value убран из chat.answer (2026-08-05) — имя культуры едет в crop.name.
     const answer = {type: 'chat.answer', chat_id: $('cid').value,
-                    step_id: step, option_id: id, value: ''};
+                    step_id: step, option_id: id};
     // saved_crops («Ha») — простой ответ: сервер пришлёт этот же вопрос
     // с чипами профиля, шаг не двигается. Любой другой id на шаге crop —
     // чип профиля: культура едет отдельным объектом.
@@ -572,7 +573,7 @@ async function openCropPicker(step) {
         b.onclick = () => {
           // option_id — нажатая кнопка; сама культура едет отдельным объектом.
           send({type: 'chat.answer', chat_id: $('cid').value,
-                step_id: step, option_id: 'open_crop_picker', value: '',
+                step_id: step, option_id: 'open_crop_picker',
                 crop: {id: c.id, name: c.name}});
           box.innerHTML = '<p class="hint">Ответ отправлен, ждём следующий шаг…</p>';
         };

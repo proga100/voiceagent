@@ -500,15 +500,16 @@ class PhotoUploadRequest extends ClientEvent {
 /// sheet). A *spoken* answer instead reaches the server via the Live
 /// `select_option` tool — there is no client event for that path.
 class ChatAnswerRequest extends ClientEvent {
+  /// `value` was removed 2026-08-05 — every client always sent "": the crop
+  /// name (its only historical payload) rides in `crop.name`.
   const ChatAnswerRequest({
     required this.chatId,
     required this.stepId,
     this.optionId = '',
-    this.value = '',
     this.cropId,
     this.cropName,
   });
-  final String chatId, stepId, optionId, value;
+  final String chatId, stepId, optionId;
 
   /// Crop step only: the picked crop travels as its own `crop: {id, name}`
   /// object, so `option_id` keeps naming the tapped button
@@ -521,7 +522,6 @@ class ChatAnswerRequest extends ClientEvent {
     'chat_id': chatId,
     'step_id': stepId,
     'option_id': optionId,
-    'value': value,
     if (cropId != null) 'crop': {'id': cropId, 'name': cropName ?? ''},
   };
 }
