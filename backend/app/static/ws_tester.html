@@ -82,12 +82,18 @@
   .ev .t{color:var(--ink-3);font-size:.7rem}
   .ev pre{margin:0;white-space:pre-wrap;word-break:break-word;color:var(--ink-2)}
   .hint{color:var(--ink-3);font-size:.8rem;margin-top:8px}
+
+  #bPtt{width:100%;padding:14px;font-size:1rem;user-select:none;-webkit-user-select:none;
+        touch-action:none}
+  #bPtt.rec{background:var(--err-bg);border-color:var(--err);color:var(--err)}
+  .meter{height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;margin-top:8px}
+  .meter i{display:block;height:100%;width:0;background:var(--in);transition:width .08s linear}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Growz Voice Agent — WebSocket tester</h1>
-  <p class="sub">Полный цикл опроса: создание чата, все шаги, диагноз. Показывает каждый payload и проигрывает голос. Файл самодостаточный — открывается с диска, ничего ставить не нужно.</p>
+  <p class="sub">Полный цикл: создание чата, все шаги, голос с микрофона (PTT), фото, диагноз. Показывает каждый payload и проигрывает ответ. Файл самодостаточный; для микрофона откройте по https или с localhost.</p>
 
   <div class="grid">
     <div>
@@ -111,8 +117,9 @@
         </div>
         <div class="stats">
           <span>событий <b id="nEv">0</b></span>
-          <span>аудио <b id="nAud">0</b> КБ</span>
+          <span>аудио ↓ <b id="nAud">0</b> КБ</span>
           <span>речи <b id="nSec">0.0</b> с</span>
+          <span>микрофон ↑ <b id="nOut">0</b> КБ</span>
         </div>
         <label style="margin-top:12px"><input type="checkbox" id="snd" checked style="width:auto;margin-right:6px">проигрывать голос</label>
       </div>
@@ -120,6 +127,21 @@
       <div class="card">
         <h2>Текущий шаг</h2>
         <div id="qbox"><p class="hint">Подключитесь — сюда придёт первый вопрос с вариантами.</p></div>
+      </div>
+
+      <div class="card">
+        <h2>Голос — push-to-talk</h2>
+        <button id="bPtt" disabled>🎤 Удерживайте и говорите</button>
+        <div class="meter"><i id="lvl"></i></div>
+        <p class="hint" id="micHint">Пока кнопка нажата, идут бинарные кадры PCM16 16 кГц ровно по 3200 байт (100 мс). После отпускания — хвост тишины 1.2 с, как в приложении: по нему сервер понимает конец фразы.</p>
+      </div>
+
+      <div class="card">
+        <h2>Фото</h2>
+        <input type="file" id="photoFile" accept="image/*" style="display:none">
+        <button id="bPhoto" disabled>📷 Выбрать и отправить фото</button>
+        <span id="photoCnt" class="hint"></span>
+        <p class="hint">Сжимается до 1536 px JPEG и уходит как photo.upload (base64 в JSON, не бинарный кадр). target_part не отправляется — сервер определяет его сам.</p>
       </div>
 
       <div class="card">
@@ -180,6 +202,7 @@ function setStatus(text, state) {
 }
 
 /* ---- воспроизведение PCM16 24 кГц ---- */
+let playSrcs = [];
 function playPcm(buf) {
   if (!$('snd').checked) return;
   try {
@@ -194,7 +217,15 @@ function playPcm(buf) {
     playAt = Math.max(playAt, ac.currentTime);
     src.start(playAt);
     playAt += ab.duration;
+    playSrcs.push(src);
+    src.onended = () => { const i = playSrcs.indexOf(src); if (i >= 0) playSrcs.splice(i, 1); };
   } catch (e) { /* без звука не страшно */ }
+}
+
+/* Сброс всего запланированного звука — при барже-ине, как _flushPlayback в приложении. */
+function flushPlayback() {
+  playSrcs.forEach(s => { try { s.stop(); } catch (_) {} });
+  playSrcs = []; playAt = 0;
 }
 
 function send(obj) {
@@ -229,7 +260,8 @@ function mkBtn(id, label, step) {
   b.textContent = label;
   b.onclick = () => {
     if (id === 'take_photo') {
-      log('err', 'подсказка', 'take_photo — не ответ, он лишь открывает камеру. Шаг закрывают skip или done_photos.');
+      log('err', 'подсказка', 'take_photo — не ответ, он лишь открывает выбор фото. Шаг закрывают done_photos или skip.');
+      $('photoFile').click();
       return;
     }
     send({type: 'chat.answer', chat_id: $('cid').value,
@@ -239,6 +271,166 @@ function mkBtn(id, label, step) {
   };
   return b;
 }
+
+/* ---- микрофон: PCM16 16 кГц, кадры ровно по 3200 байт ----
+   Браузер пишет во float на своей частоте; AudioContext({sampleRate:16000})
+   заставляет его ресемплировать за нас. ScriptProcessor устарел, но работает
+   везде без загрузки worklet-модуля — для тестера это правильный компромисс. */
+const FRAME = 3200;
+let micCtx = null, micOn = false, ptt = false;
+let carry = new Uint8Array(0), tailTimer = null, outBytes = 0;
+
+async function ensureMic() {
+  if (micOn) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    log('err', 'микрофон', 'getUserMedia недоступен. Откройте страницу по https или с localhost — file:// не даёт доступ к микрофону. Фото и текст работают и так.');
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(
+      {audio: {echoCancellation: true, noiseSuppression: true}});
+    micCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 16000});
+    const src = micCtx.createMediaStreamSource(stream);
+    const proc = micCtx.createScriptProcessor(4096, 1, 1);
+    proc.onaudioprocess = ev => {
+      const f32 = ev.inputBuffer.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < f32.length; i++) sum += f32[i] * f32[i];
+      $('lvl').style.width = Math.min(100, Math.sqrt(sum / f32.length) * 300) + '%';
+      if (!ptt || !sock || sock.readyState !== 1) return;
+      const i16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++) {
+        const s = Math.max(-1, Math.min(1, f32[i]));
+        i16[i] = s < 0 ? s * 32768 : s * 32767;
+      }
+      pushMicBytes(new Uint8Array(i16.buffer));
+    };
+    src.connect(proc); proc.connect(micCtx.destination);
+    micOn = true;
+    return true;
+  } catch (e) {
+    log('err', 'микрофон', String(e) + '  (разрешение не дано или контекст небезопасный)');
+    return false;
+  }
+}
+
+/* Реассемблер, как Reframer в приложении: копим байты, режем ровно по 3200,
+   остаток переносим в следующий кадр. */
+function pushMicBytes(bytes) {
+  const buf = new Uint8Array(carry.length + bytes.length);
+  buf.set(carry); buf.set(bytes, carry.length);
+  let off = 0;
+  while (buf.length - off >= FRAME) {
+    sock.send(buf.slice(off, off + FRAME));
+    off += FRAME; outBytes += FRAME;
+  }
+  carry = buf.slice(off);
+  $('nOut').textContent = Math.round(outBytes / 1024);
+}
+
+/* Хвост тишины: остаток добиваем нулями, затем 12 нулевых кадров с шагом
+   ~90 мс — ровно как _sendSilenceTail в приложении. Сервер по нему понимает
+   конец фразы; без хвоста он молча ждёт продолжения. */
+function sendSilenceTail() {
+  if (!sock || sock.readyState !== 1) { carry = new Uint8Array(0); return; }
+  if (carry.length) {
+    const pad = new Uint8Array(FRAME); pad.set(carry);
+    sock.send(pad); outBytes += FRAME;
+    carry = new Uint8Array(0);
+  }
+  const zero = new Uint8Array(FRAME);
+  let n = 0;
+  tailTimer = setInterval(() => {
+    if (ptt || !sock || sock.readyState !== 1 || ++n > 12) {
+      clearInterval(tailTimer); tailTimer = null;
+      $('nOut').textContent = Math.round(outBytes / 1024);
+      return;
+    }
+    sock.send(zero); outBytes += FRAME;
+  }, 90);
+  log('out', 'silence-tail', '12 × 3200 нулевых байт (~1.2 с) — сигнал конца фразы');
+}
+
+async function pttDown(e) {
+  e.preventDefault();
+  if (!sock || sock.readyState !== 1) return;
+  if (!(await ensureMic())) return;
+  if (micCtx.state === 'suspended') micCtx.resume();
+  if (tailTimer) { clearInterval(tailTimer); tailTimer = null; }
+  // нажали, пока агент говорит — это барж-ин, как в приложении
+  if (ac && playAt > ac.currentTime + 0.05) {
+    send({type: 'user.interrupt'});
+    flushPlayback();
+  }
+  ptt = true;
+  $('bPtt').classList.add('rec');
+  $('bPtt').textContent = '🔴 Говорите… (отпустите, чтобы закончить)';
+  log('out', 'mic', 'кадры пошли: PCM16 16 кГц, по 3200 байт / 100 мс');
+}
+
+function pttUp() {
+  if (!ptt) return;
+  ptt = false;
+  $('bPtt').classList.remove('rec');
+  $('bPtt').textContent = '🎤 Удерживайте и говорите';
+  $('lvl').style.width = '0';
+  sendSilenceTail();
+}
+
+$('bPtt').addEventListener('pointerdown', pttDown);
+$('bPtt').addEventListener('pointerup', pttUp);
+$('bPtt').addEventListener('pointercancel', pttUp);
+$('bPtt').addEventListener('pointerleave', pttUp);
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  $('micHint').textContent = '⚠ Микрофон недоступен в этом контексте. Откройте страницу по https (например /voice/tester на сервере) или с localhost. Фото и текст работают и здесь.';
+}
+
+/* ---- фото: сжать до 1536 px JPEG и отправить как photo.upload ---- */
+let photoCount = 0, pendingPhoto = null;
+
+function uuid4() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+  });
+}
+
+$('bPhoto').onclick = () => $('photoFile').click();
+
+$('photoFile').onchange = async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file || !sock || sock.readyState !== 1) return;
+  try {
+    const img = await createImageBitmap(file);
+    const k = Math.min(1, 1536 / Math.max(img.width, img.height));
+    const w = Math.round(img.width * k), h = Math.round(img.height * k);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    // сервер принимает ≤ 2 МБ; если не влезли — снижаем качество
+    let q = 0.85, dataUrl = cv.toDataURL('image/jpeg', q);
+    while (dataUrl.length * 0.75 > 2000000 && q > 0.4) {
+      q -= 0.15;
+      dataUrl = cv.toDataURL('image/jpeg', q);
+    }
+    const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const payload = {type: 'photo.upload', photo_id: uuid4(), mime: 'image/jpeg',
+                     data: b64, width: w, height: h, origin: 'gallery'};
+    sock.send(JSON.stringify(payload));
+    log('out', 'photo.upload',
+        {...payload, data: '<base64, ' + Math.round(b64.length * 0.75 / 1024) + ' КБ, q=' + q.toFixed(2) + '>'});
+    if (pendingPhoto) clearTimeout(pendingPhoto.t);
+    pendingPhoto = {id: payload.photo_id, t: setTimeout(() => {
+      log('err', 'photo', 'photo.received не пришёл за 15 с — как и в приложении, считаем отправку неудачной');
+      pendingPhoto = null;
+    }, 15000)};
+  } catch (e) {
+    log('err', 'фото', String(e));
+  }
+};
 
 /* ---- REST: создать чат ---- */
 $('bChat').onclick = async () => {
@@ -269,6 +461,8 @@ $('bConn').onclick = () => {
   sock.onopen = () => {
     setStatus('подключено', 'on');
     $('bStop').disabled = false; $('bTxt').disabled = false; $('bInt').disabled = false;
+    $('bPtt').disabled = false; $('bPhoto').disabled = false;
+    photoCount = 0; $('photoCnt').textContent = '';
     const start = {type: 'session.start', sample_rate: 16000, language: 'uz-UZ',
                    voice: 'Charon', user_id: $('uid').value};
     if ($('cid').value.trim()) start.chat_id = $('cid').value.trim();
@@ -290,19 +484,33 @@ $('bConn').onclick = () => {
     if (m.type === 'chat.question') renderQuestion(m);
     if (m.type === 'chat.state' && m.phase === 'consult')
       $('qbox').innerHTML = '<p class="hint">Опрос завершён — фаза consult, свободная консультация.</p>';
+    if (m.type === 'photo.received') {
+      if (pendingPhoto && (!m.photo_id || m.photo_id === pendingPhoto.id)) {
+        clearTimeout(pendingPhoto.t); pendingPhoto = null;
+      }
+      photoCount = (typeof m.count === 'number') ? m.count : photoCount + 1;
+      $('photoCnt').textContent = '✓ принято: ' + photoCount + '/5' +
+        (m.duplicate_of ? '  (дубликат ' + m.duplicate_of + ')' : '');
+    }
+    if (m.type === 'agent.interrupted') flushPlayback();
   };
 
   sock.onerror = () => log('err', 'ошибка сокета', 'соединение не установлено — проверьте адрес и токен');
   sock.onclose = ev => {
     setStatus('закрыто, код ' + ev.code, ev.code === 1000 ? '' : 'err');
     $('bStop').disabled = true; $('bTxt').disabled = true; $('bInt').disabled = true;
+    $('bPtt').disabled = true; $('bPhoto').disabled = true;
+    ptt = false; $('bPtt').classList.remove('rec');
+    $('bPtt').textContent = '🎤 Удерживайте и говорите';
+    if (tailTimer) { clearInterval(tailTimer); tailTimer = null; }
+    carry = new Uint8Array(0);
     log('err', 'CLOSE', 'код ' + ev.code + (ev.code === 1006 ? '  (обычно неверный токен)' : ''));
   };
 };
 
 $('bStop').onclick = () => sock && sock.close(1000);
 $('bTxt').onclick  = () => send({type: 'text.input', text: $('txt').value});
-$('bInt').onclick  = () => send({type: 'user.interrupt'});
+$('bInt').onclick  = () => { send({type: 'user.interrupt'}); flushPlayback(); };
 $('bClr').onclick  = () => { $('log').innerHTML = ''; events = 0; $('nEv').textContent = '0'; };
 $('bCopy').onclick = () => {
   navigator.clipboard.writeText($('log').innerText)
