@@ -158,12 +158,12 @@ class StreamingSession:
                 # STT emits both `final` and `final_refinement` for one utterance;
                 # ignore the refinement of the utterance we're already answering so
                 # it doesn't self-barge-in and restart the turn.
+                # "stt.final" is no longer sent to the client (2026-08-05):
+                # the app never parsed it — only stt.partial reaches the UI.
                 if self._is_refinement_of_current(t.text):
-                    await self._send_json({"type": "stt.final", "text": t.text})
                     continue
                 if self._latency:
                     self._latency.mark("t3_stt_final")
-                await self._send_json({"type": "stt.final", "text": t.text})
                 # A genuinely new completed utterance while the agent talks = barge-in.
                 # (Mid-speech VAD barge-in is layered on in Step 8; partials alone
                 # are too noisy — trailing/echo audio would self-interrupt.)
@@ -253,8 +253,9 @@ class StreamingSession:
 
             self._conversation.add_assistant("".join(answer_parts))
             await self._send_json({"type": "tts.finished"})
+            # "latency.metrics" removed from the wire (2026-08-05) — the
+            # tracker still records marks for server-side inspection.
             lat.mark("t10_turn_end")
-            await self._send_json({"type": "latency.metrics", **lat.snapshot()})
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

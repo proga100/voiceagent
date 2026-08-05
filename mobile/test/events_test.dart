@@ -627,20 +627,6 @@ void main() {
       expect(e.toJson().containsKey('target_part'), isFalse);
     });
 
-    test('photo.quality (Phase 5)', () {
-      const e = PhotoQualityReport(
-        status: 'bad',
-        reason: 'blur',
-        targetPart: 'leaf',
-      );
-      expect(e.toJson(), {
-        'type': 'photo.quality',
-        'status': 'bad',
-        'reason': 'blur',
-        'target_part': 'leaf',
-      });
-    });
-
     test('camera.cancelled (Phase 5)', () {
       expect(const CameraCancelledRequest(callId: 'c7').toJson(), {
         'type': 'camera.cancelled',

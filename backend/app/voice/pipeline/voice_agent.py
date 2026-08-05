@@ -360,12 +360,6 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     await chat_guide.on_photo_received(
                         event.get("photo_id") or "", photo_url=photo_url,
                     )
-            elif etype == "photo.quality" and hasattr(session, "on_photo_quality"):
-                await session.on_photo_quality(
-                    event.get("status", ""),
-                    event.get("reason", ""),
-                    event.get("target_part"),
-                )
             elif etype == "camera.cancelled" and hasattr(session, "on_camera_cancelled"):
                 await session.on_camera_cancelled()
                 if chat_guide is not None:

@@ -1227,22 +1227,6 @@ class GeminiLiveSession:
             await self._speak_text(_LOW_QUALITY_NOTE)
         return True  # photo stored -> the guide may count it
 
-    async def on_photo_quality(
-        self, status: str, reason: str, target_part: str | None = None
-    ) -> None:
-        """Relay camera coaching. Only 'bad' frames arrive (the client throttles);
-        map the reason to a short Uzbek tip the model speaks to the farmer."""
-        if status != "bad":
-            return
-        tips = {
-            "blur": "rasm xira chiqdi, telefonni qimirlatmay yaqinroq oling",
-            "too_dark": "rasm juda qorongʻi, yorugʻroq joyda oling",
-            "too_bright": "rasm juda yorugʻ, quyoshga qaramay oling",
-            "no_plant": "rasmda oʻsimlik koʻrinmadi, kasal qismini kadrga oling",
-        }
-        tip = tips.get(reason, "rasmni yana bir marta aniqroq oling")
-        await self._speak_text(f"[KAMERA: {tip}. Fermerga buni bir jumlada ayt.]")
-
     async def on_camera_cancelled(self) -> None:
         """Farmer dismissed the camera. A photo is mandatory now (2026-08-05),
         so the model asks again instead of carrying on photo-less."""

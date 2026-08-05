@@ -61,14 +61,6 @@ class PhotoUpload(BaseModel):
     target_part: str | None = None
 
 
-class PhotoQuality(BaseModel):
-    type: Literal["photo.quality"] = "photo.quality"
-    # Only "bad" is forwarded to the model; the client throttles the good frames.
-    status: str = "bad"
-    reason: str = ""  # blur | too_dark | too_bright | no_plant
-    target_part: str | None = None
-
-
 class CameraCancelled(BaseModel):
     type: Literal["camera.cancelled"] = "camera.cancelled"
 
@@ -81,16 +73,6 @@ class CameraCancelled(BaseModel):
 class STTPartial(BaseModel):
     type: Literal["stt.partial"] = "stt.partial"
     value: str
-
-
-class STTFinal(BaseModel):
-    type: Literal["stt.final"] = "stt.final"
-    text: str
-
-
-class IntentPartial(BaseModel):
-    type: Literal["intent.partial"] = "intent.partial"
-    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMToken(BaseModel):
@@ -108,12 +90,6 @@ class TTSFinished(BaseModel):
 
 class AgentInterrupted(BaseModel):
     type: Literal["agent.interrupted"] = "agent.interrupted"
-
-
-class LatencyMetrics(BaseModel):
-    type: Literal["latency.metrics"] = "latency.metrics"
-    marks: dict[str, float] = Field(default_factory=dict)
-    deltas: dict[str, float] = Field(default_factory=dict)
 
 
 class ErrorEvent(BaseModel):

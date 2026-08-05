@@ -543,30 +543,6 @@ class PhotoUploadRequest extends ClientEvent {
   };
 }
 
-/// Phase 5: local camera quality verdict for a preview frame.
-class PhotoQualityReport extends ClientEvent {
-  const PhotoQualityReport({
-    required this.status,
-    this.reason,
-    this.targetPart,
-  });
-
-  /// `good` | `bad`.
-  final String status;
-
-  /// `blur` | `too_dark` | `too_bright` | `no_plant` | null.
-  final String? reason;
-  final String? targetPart;
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'type': 'photo.quality',
-    'status': status,
-    'reason': reason,
-    if (targetPart != null) 'target_part': targetPart,
-  };
-}
-
 /// Phase 5: the farmer cancelled the camera for a pending request.
 class CameraCancelledRequest extends ClientEvent {
   const CameraCancelledRequest({required this.callId});

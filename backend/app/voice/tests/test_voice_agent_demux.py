@@ -81,12 +81,14 @@ async def test_photo_upload_decodes_and_dispatches(monkeypatch):
     assert photo_calls == [("photo", "p1", raw, "image/png", "leaf")]
 
 
-async def test_photo_quality_and_camera_cancelled_dispatch(monkeypatch):
+async def test_camera_cancelled_dispatch_and_photo_quality_ignored(monkeypatch):
+    # "photo.quality" left the protocol on 2026-08-05 (the app never sent it);
+    # an old client still sending it must be silently ignored, not crash.
     session = await _run(monkeypatch, [
         {"type": "photo.quality", "status": "bad", "reason": "blur", "target_part": "leaf"},
         {"type": "camera.cancelled"},
     ])
-    assert ("quality", "bad", "blur", "leaf") in session.calls
+    assert not [c for c in session.calls if c[0] == "quality"]
     assert ("cancel",) in session.calls
 
 
