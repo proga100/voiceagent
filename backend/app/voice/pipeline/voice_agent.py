@@ -43,19 +43,109 @@ from app.voice.providers.gemini_live import GeminiLiveSession
 logger = logging.getLogger("voice.agent")
 
 
-async def _download_photo(url: str, max_bytes: int) -> tuple[bytes, str] | None:
-    """Fetch the photo the client uploaded over REST (2026-08-05 protocol:
-    `photo.upload` carries a URL in `value`, never base64). Returns
-    ``(bytes, mime)`` or ``None`` on any failure — the WS loop must not die
-    because a CDN hiccuped. Module-level so tests can monkeypatch it."""
-    if not url.startswith(("http://", "https://")):
+def _public_host_ok(host: str, extra_allowed: set[str]) -> bool:
+    """SSRF guard for a CLIENT-supplied photo URL. ANY public host is fine
+    (team decision 2026-08-05: photos may live on the main Growz backend's
+    bucket, a CDN, anywhere) — what is refused is the internal network:
+    loopback, link-local (169.254.169.254 cloud metadata), RFC1918, multicast
+    and friends. A host listed in ``PHOTO_URL_ALLOWED_HOSTS`` bypasses the
+    check, for dev/staging storage that genuinely sits on a private IP."""
+    import ipaddress
+    import socket
+
+    if not host:
+        return False
+    if host.lower() in extra_allowed:
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+            return False
+    return bool(infos)
+
+
+def _extra_photo_hosts(settings) -> set[str]:
+    """Hosts that skip the private-IP check (``PHOTO_URL_ALLOWED_HOSTS``) —
+    e.g. a staging bucket reachable only on the internal network."""
+    return {h for h in getattr(settings, "photo_host_list", []) if h}
+
+
+def _local_photo_path(url: str, settings):
+    """If ``url`` is our own ``/photos/{user}/{chat}/{name}`` serving route
+    (the Spaces-less fallback POST /photos hands out), map it to the file
+    under ``settings.photos_dir`` — sanitized, no traversal. None otherwise."""
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    from app.voice.pipeline.photo_store import _sanitize
+
+    marker = "/photos/"
+    path = urlparse(url).path
+    if marker not in path:
+        return None
+    parts = path.split(marker, 1)[1].split("/")
+    if len(parts) != 3:
+        return None
+    segs = [_sanitize(p) for p in parts]
+    if not all(segs):
+        return None
+    p = Path(getattr(settings, "photos_dir", "data/photos")) / segs[0] / segs[1] / segs[2]
+    return p if p.is_file() else None
+
+
+async def _download_photo(url: str, settings) -> tuple[bytes, str] | None:
+    """Fetch the photo the client referenced in ``photo.upload`` (2026-08-05
+    protocol: `value` carries a URL minted by POST /photos, never base64).
+
+    SSRF hardening: the URL is CLIENT input, so it is never fetched blindly.
+    Our own local-fallback route is read straight from disk (no HTTP at all).
+    ANY public URL is accepted (the photo may be stored by the main Growz
+    backend, a CDN, anywhere), but the internal network is off limits —
+    see ``_public_host_ok`` — and redirects are refused so the check cannot
+    be hopped past.
+    Returns ``(bytes, mime)`` or ``None`` — the WS loop must not die because
+    a fetch failed. Module-level so tests can monkeypatch it."""
+    max_bytes = getattr(settings, "max_photo_bytes", 2_000_000)
+    try:
+        local = _local_photo_path(url, settings)
+    except Exception:  # noqa: BLE001
+        local = None
+    if local is not None:
+        try:
+            data = local.read_bytes()
+            if not data or len(data) > max_bytes:
+                return None
+            mime = "image/png" if local.suffix == ".png" else "image/jpeg"
+            return data, mime
+        except OSError:
+            logger.warning("photo local read failed: %s", url)
+            return None
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        logger.warning("photo url rejected (scheme): %s", url)
+        return None
+    if not _public_host_ok(parsed.hostname or "", _extra_photo_hosts(settings)):
+        logger.warning("photo url rejected (internal address): %s", url)
         return None
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=20.0, follow_redirects=False,
+        ) as client:
             r = await client.get(url)
-            r.raise_for_status()
+            r.raise_for_status()  # a 3xx raises too — redirects are refused
             data = r.content
         if not data or len(data) > max_bytes:
             logger.warning("photo download rejected: %s bytes from %s",
@@ -371,8 +461,7 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                 if chat_doc is not None and ev_chat and ev_chat != chat_doc.id:
                     continue  # stale event from another chat — drop silently
                 fetched = await _download_photo(
-                    (event.get("value") or "").strip(),
-                    getattr(settings, "max_photo_bytes", 2_000_000),
+                    (event.get("value") or "").strip(), settings,
                 )
                 if fetched is None:
                     continue
@@ -403,11 +492,6 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                 # Client audio telemetry (app built with AUDIO_DEBUG=true).
                 # print(): app loggers have no handler under uvicorn's config.
                 print(f"[client-debug] {event.get('msg')}", flush=True)
-            elif etype == "audio.end":
-                # "session.end" was removed (2026-08-05): closing the socket
-                # is the hangup signal, and the finally-block below already
-                # does the full teardown either way.
-                pass
     except WebSocketDisconnect:
         logger.info("voice agent disconnected")
     finally:

@@ -26,7 +26,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas import (
     AgentInterrupted,
-    AudioEnd,
     CaseDiagnosis,
     ChatAnswer,
     ChatQuestion,
@@ -269,7 +268,6 @@ class ChatDetailResponse(BaseModel):
 
 WS_CLIENT_EVENTS: tuple[type[BaseModel], ...] = (
     ChatStart,
-    AudioEnd,
     UserInterrupt,
     PhotoUpload,
     ChatAnswer,

@@ -45,10 +45,6 @@ class ChatStart(BaseModel):
     chat_id: str = ""
 
 
-class AudioEnd(BaseModel):
-    type: Literal["audio.end"] = "audio.end"
-
-
 class UserInterrupt(BaseModel):
     type: Literal["user.interrupt"] = "user.interrupt"
 
