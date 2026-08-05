@@ -375,7 +375,21 @@ let carry = new Uint8Array(0), tailTimer = null, outBytes = 0;
 async function ensureMic() {
   if (micOn) return true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    log('err', 'микрофон', 'getUserMedia недоступен. Откройте страницу по https или с localhost — file:// не даёт доступ к микрофону. Фото и текст работают и так.');
+    // getUserMedia живёт только в secure context: https ЛИБО localhost.
+    // http://192.168.x.x — НЕ secure, браузер прячет API целиком.
+    const here = location.protocol + '//' + location.host;
+    let tip;
+    if (location.protocol === 'file:') {
+      tip = 'страница открыта как file:// — откройте http://localhost:5055/voice/tester';
+    } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      tip = 'неожиданно: localhost должен давать доступ — проверьте разрешения браузера';
+    } else {
+      tip = 'страница на ' + here + ' — это не secure context. С этого же компьютера: '
+          + 'откройте через localhost (' + location.protocol + '//localhost:' + (location.port || '80')
+          + location.pathname + '). С другого устройства: chrome://flags/#unsafely-treat-insecure-origin-as-secure'
+          + ' → добавьте ' + here + ' → Relaunch. Либо https. Фото и текст работают и так.';
+    }
+    log('err', 'микрофон', 'getUserMedia недоступен: ' + tip);
     return false;
   }
   try {
