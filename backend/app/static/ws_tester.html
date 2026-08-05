@@ -286,6 +286,8 @@ function renderQuestion(m) {
   const box = $('qbox');
   box.innerHTML = `<div class="sid">${m.step_id} · kind: ${m.kind}</div>
                    <div class="prompt">${m.prompt}</div>`;
+  // crop_picker: «Ha»/«Yoʻq» теперь приходят С СЕРВЕРА как обычные options —
+  // особые id (saved_crops / open_crop_picker) разбирает mkBtn.
   if (!m.options || !m.options.length) {
     const p = document.createElement('p');
     p.className = 'hint';
@@ -319,8 +321,10 @@ function mkBtn(id, label, step) {
     }
     const answer = {type: 'chat.answer', chat_id: $('cid').value,
                     step_id: step, option_id: id, value: ''};
-    // Сохранённая культура (чип на шаге crop): культура — отдельным объектом.
-    if (step === 'crop') answer.crop = {id: id, name: label};
+    // saved_crops («Ha») — простой ответ: сервер пришлёт этот же вопрос
+    // с чипами профиля, шаг не двигается. Любой другой id на шаге crop —
+    // чип профиля: культура едет отдельным объектом.
+    if (step === 'crop' && id !== 'saved_crops') answer.crop = {id: id, name: label};
     send(answer);
     $('qbox').innerHTML = '<p class="hint">Ответ отправлен, ждём следующий шаг…</p>';
   };

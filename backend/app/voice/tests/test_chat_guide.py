@@ -231,6 +231,58 @@ async def test_crop_step_rejects_the_open_crop_picker_sentinel(store):
     assert steps_after == steps_before, "no ack for a rejected answer"
 
 
+async def test_crop_question_offers_ha_yoq_when_profile_has_chips(store):
+    # The «Ha»/«Yoʻq» pair is SERVER-driven: with profile chips resolved the
+    # crop question first offers exactly the two buttons, not the chips.
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    guide._crop_chips = [{"id": "uuid-pomidor", "label": "Pomidor"}]
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+
+    q = rec.last("chat.question")
+    assert q["step_id"] == "crop"
+    assert q["kind"] == "crop_picker"
+    assert [o["id"] for o in q["options"]] == ["saved_crops", "open_crop_picker"]
+    assert [o["label"] for o in q["options"]] == ["Ha", "Yoʻq"]
+
+
+async def test_saved_crops_answer_expands_chips_without_advancing(store):
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    guide._crop_chips = [{"id": "uuid-pomidor", "label": "Pomidor"}]
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+
+    await guide.on_answer("crop", "saved_crops", "")
+
+    q = rec.last("chat.question")
+    assert q["step_id"] == "crop"
+    assert [o["id"] for o in q["options"]] == ["uuid-pomidor", "open_crop_picker"]
+    assert guide.pending_step() == "crop", "expanding chips must not advance"
+    assert doc.crop_id == "", "saved_crops must never persist as a crop"
+
+
+async def test_crop_question_always_offers_ha_yoq_even_with_empty_profile(store):
+    # The pair is unconditional — the question literally asks yes/no, so both
+    # buttons come regardless of the profile. «Ha» on an empty profile then
+    # resolves to the catalogue-only view.
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    guide._crop_chips = []
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+
+    q = rec.last("chat.question")
+    assert [o["id"] for o in q["options"]] == ["saved_crops", "open_crop_picker"]
+
+    await guide.on_answer("crop", "saved_crops", "")
+    q = rec.last("chat.question")
+    assert [o["id"] for o in q["options"]] == ["open_crop_picker"]
+    assert q["options"][0]["label"] == "Ekinlar"
+    assert guide.pending_step() == "crop"
+
+
 async def test_crop_answer_new_shape_carries_the_crop_as_an_object(store):
     # New payload: option_id names the tapped button (open_crop_picker), the
     # picked crop rides as crop={id,name}. The sentinel in option_id must NOT
@@ -1603,12 +1655,19 @@ async def test_memory_crop_chips_resolved_and_prepended_to_crop_options(store):
     guide, rec = _guide(store, doc)
     guide.set_memory_crops(["pomidor", "bodring"])
     await guide.start()
+    # Server-driven «Ha»/«Yoʻq»: chips exist -> the pair comes first…
     question = rec.last("chat.question")
     assert question["step_id"] == "crop"
+    assert [o["id"] for o in question["options"]] == [
+        "saved_crops", "open_crop_picker",
+    ]
+    # …and answering «Ha» reveals the resolved chips.
+    await guide.on_answer("crop", "saved_crops", "")
+    question = rec.last("chat.question")
     assert question["options"] == [
         {"id": "uuid-pomidor", "label": "Pomidor"},
         {"id": "uuid-bodring", "label": "Bodring"},
-        {"id": "open_crop_picker", "label": "Ekinlar"},
+        {"id": "open_crop_picker", "label": "Yoʻq"},
     ]
 
 
@@ -1629,6 +1688,8 @@ async def test_memory_crop_chips_capped_at_4(store, monkeypatch):
         ["pomidor", "bodring", "behi", "g'o'za", "kartoshka", "piyoz"]
     )
     await guide.start()
+    # Server-driven «Ha»/«Yoʻq»: chips are revealed by answering saved_crops.
+    await guide.on_answer("crop", "saved_crops", "")
     question = rec.last("chat.question")
     chip_ids = [o["id"] for o in question["options"] if o["id"] != "open_crop_picker"]
     assert chip_ids == ["uuid-pomidor", "uuid-bodring", "uuid-behi", "uuid-goza"]
@@ -1640,6 +1701,7 @@ async def test_memory_crop_chips_deduped_by_growz_id(store):
     guide, rec = _guide(store, doc)
     guide.set_memory_crops(["pomidor", "pomidor"])
     await guide.start()
+    await guide.on_answer("crop", "saved_crops", "")
     question = rec.last("chat.question")
     chip_ids = [o["id"] for o in question["options"] if o["id"] != "open_crop_picker"]
     assert chip_ids == ["uuid-pomidor"]
@@ -1651,21 +1713,26 @@ async def test_memory_crop_chips_unresolved_names_are_dropped(store):
     guide, rec = _guide(store, doc)
     guide.set_memory_crops(["traktor", "pomidor"])  # "traktor" matches nothing
     await guide.start()
+    await guide.on_answer("crop", "saved_crops", "")
     question = rec.last("chat.question")
     assert question["options"] == [
         {"id": "uuid-pomidor", "label": "Pomidor"},
-        {"id": "open_crop_picker", "label": "Ekinlar"},
+        {"id": "open_crop_picker", "label": "Yoʻq"},
     ]
 
 
-async def test_memory_crop_chips_absent_falls_back_to_v1_options(store):
+async def test_memory_crop_chips_absent_still_offers_ha_yoq(store):
+    # The pair is unconditional now; an empty profile only changes what «Ha»
+    # expands into (see the dedicated test above).
     doc = new_chat_doc(DEV)
     doc.query_type = "disease_pest"
     guide, rec = _guide(store, doc)
     # set_memory_crops never called
     await guide.start()
     question = rec.last("chat.question")
-    assert question["options"] == [{"id": "open_crop_picker", "label": "Ekinlar"}]
+    assert [o["id"] for o in question["options"]] == [
+        "saved_crops", "open_crop_picker",
+    ]
 
 
 async def test_memory_crop_chips_fail_open_on_catalogue_error(store, monkeypatch):
@@ -1678,6 +1745,13 @@ async def test_memory_crop_chips_fail_open_on_catalogue_error(store, monkeypatch
     guide, rec = _guide(store, doc)
     guide.set_memory_crops(["pomidor"])
     await guide.start()
+    # The pair still shows (it is unconditional); «Ha» then fails open to the
+    # catalogue-only view instead of degrading the whole guide.
+    question = rec.last("chat.question")
+    assert [o["id"] for o in question["options"]] == [
+        "saved_crops", "open_crop_picker",
+    ]
+    await guide.on_answer("crop", "saved_crops", "")
     question = rec.last("chat.question")
     assert question["options"] == [{"id": "open_crop_picker", "label": "Ekinlar"}]
     assert guide.degraded is False

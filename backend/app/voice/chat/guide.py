@@ -476,6 +476,11 @@ class ChatGuide:
         # emitted this session.
         self._memory_crop_names: list[str] = []
         self._crop_chips: list[dict] | None = None
+        # Server-driven «Ha»/«Yoʻq»: the crop question first offers the two
+        # buttons; answering «Ha» (saved_crops) flips this and the question is
+        # re-sent with the actual profile chips. Transient — a reconnect goes
+        # back to «Ha»/«Yoʻq», which is fine.
+        self._crop_saved_expanded = False
         # Symptom-phase backstop counter (contract §4.8).
         self._symptom_turns = 0
         self._symptom_backstop_scheduled = False
@@ -557,9 +562,24 @@ class ChatGuide:
         return chips
 
     async def _crop_question_options(self) -> list[tuple[str, str]]:
+        """The «Ha»/«Yoʻq» logic lives HERE, not in the app: the question
+        ALWAYS opens with the two buttons — the farmer answers the yes/no it
+        literally asks, profile or not. «Ha» (saved_crops) re-sends the same
+        question expanded: the profile chips, or just the catalogue button
+        when the profile turned out to be empty."""
+        # Resolve chips even in the un-expanded phase: the spoken directive
+        # (_opts_str) tells the model what hides behind «Ha», and the voice
+        # path needs that regardless of which buttons are on screen.
         chips = await self._resolve_crop_chips()
+        if not self._crop_saved_expanded:
+            return [
+                ("saved_crops", UZ["optCropYes"]),
+                ("open_crop_picker", UZ["optCropNo"]),
+            ]
+        if not chips:
+            return [("open_crop_picker", UZ["optCrops"])]
         return [(c["id"], c["label"]) for c in chips] + [
-            ("open_crop_picker", UZ["optCrops"])
+            ("open_crop_picker", UZ["optCropNo"])
         ]
 
     def _opts_str(self, step_id: str) -> str:
@@ -761,11 +781,12 @@ class ChatGuide:
     def _validate(self, step_id: str, option_id: str, value: str) -> tuple[str, str, str] | None:
         if step_id == "crop":
             option_id = (option_id or "").strip()
-            # "open_crop_picker" is the UI sentinel that OPENS the catalogue —
-            # not a crop. A client that echoes it as the answer (seen from the
-            # WS tester, 2026-08-05) would otherwise get it persisted as
-            # crop_id and the interview would carry a bogus crop to diagnosis.
-            if not option_id or option_id == "open_crop_picker":
+            # "open_crop_picker" / "saved_crops" are UI sentinels (open the
+            # catalogue / expand the profile chips) — not crops. A client that
+            # echoes one as the answer (seen from the WS tester, 2026-08-05)
+            # would otherwise get it persisted as crop_id and the interview
+            # would carry a bogus crop to diagnosis.
+            if not option_id or option_id in ("open_crop_picker", "saved_crops"):
                 return None
             label = (value or "").strip() or option_id
             return option_id, value, label
@@ -856,6 +877,13 @@ class ChatGuide:
                     await self._decline_offer()
                 return
             if pending is None or step_id != pending:
+                return
+            if step_id == "crop" and option_id == "saved_crops" and crop is None:
+                # Server-driven «Ha»: expand the profile chips by re-sending
+                # the SAME question with them. The step does not advance and
+                # nothing is persisted — the real answer is still a crop.
+                self._crop_saved_expanded = True
+                await self._resend_question("crop")
                 return
             if step_id == "crop_context":
                 if option_id != "to_symptom":

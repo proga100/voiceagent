@@ -41,6 +41,10 @@ UZ: dict[str, str] = {
     "optGeneral": "Umumiy savol berish",
     "qCrop": "Bu ekin profilingizda bormi?",
     "optCrops": "Ekinlar",
+    # Server-driven «Ha»/«Yoʻq» for the crop step (backend-only labels: they
+    # ride the chat.question payload; the app renders whatever arrives).
+    "optCropYes": "Ha",
+    "optCropNo": "Yoʻq",
     "qPlantPart": "Muammo oʻsimlikning qaysi qismida?",
     "partLeaf": "Bargida",
     "partStem": "Poyasida",

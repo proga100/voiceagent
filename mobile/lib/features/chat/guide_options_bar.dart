@@ -110,35 +110,38 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
   Widget _buildInput(ChatQuestion question, bool disabled) {
     switch (question.kind) {
       case 'crop_picker':
-        // §1.1 «Bu ekin profilingizda bormi?»: «Ha» → pick from the farmer's
-        // saved plantings (profile); «Yoʻq» → pick from the full catalogue.
-        // Either pick sends `chat.answer` and deliberately does NOT touch
-        // `selectedCropProvider` — the server owns the crop on the ChatDoc.
-        // «Ha» is disabled when the profile has no saved plantings.
-        final saved = [
-          for (final o in question.options)
-            if (o.id != 'open_crop_picker') o,
-        ];
+        // §1.1 «Bu ekin profilingizda bormi?»: the «Ha»/«Yoʻq» logic is
+        // SERVER-driven now — buttons render whatever options arrive.
+        //   saved_crops       → plain answer; the server re-sends this same
+        //                       question with the profile chips as options
+        //   open_crop_picker  → opens the full-catalogue sheet (client UI)
+        //   anything else     → a profile chip: answer with the crop object
+        // Neither path touches `selectedCropProvider` here — the server owns
+        // the crop on the ChatDoc (the catalogue sheet still mirrors it).
         return Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            FilledButton.tonal(
-              onPressed: (disabled || saved.isEmpty)
-                  ? null
-                  : () => _openOptionsSheet(
-                      question,
-                      saved,
-                      S.savedCropsTitle,
-                      leadingIcon: Icons.eco_outlined,
-                      sendValue: true,
-                    ),
-              child: const Text(S.optCropYes),
-            ),
-            FilledButton.tonal(
-              onPressed: disabled ? null : () => _openCropPicker(question),
-              child: const Text(S.optCropNo),
-            ),
+            for (final o in question.options)
+              FilledButton.tonal(
+                onPressed: disabled
+                    ? null
+                    : () {
+                        if (o.id == 'open_crop_picker') {
+                          _openCropPicker(question);
+                        } else if (o.id == 'saved_crops') {
+                          _answer(question, optionId: o.id);
+                        } else {
+                          _answer(
+                            question,
+                            optionId: o.id,
+                            cropId: o.id,
+                            cropName: o.label,
+                          );
+                        }
+                      },
+                child: Text(o.label),
+              ),
           ],
         );
       case 'photo':
