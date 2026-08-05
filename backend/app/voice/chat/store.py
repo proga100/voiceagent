@@ -33,7 +33,9 @@ from app.voice.pipeline.memory import valid_device_id
 
 logger = logging.getLogger("voice.chat.store")
 
-_CHAT_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+# Accepts our own uuid4().hex AND external ids minted by the main Growz
+# backend (dashed UUIDs). Still filesystem-safe: no dots, no separators.
+_CHAT_ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 
 # Caps enforced here, never trusted from callers (contract §3.3).
 _MAX_TITLE_CHARS = 60
@@ -50,16 +52,27 @@ def lock_for(chat_id: str) -> asyncio.Lock:
 
 
 def valid_chat_id(chat_id: object) -> bool:
-    """The id becomes a filename — reject anything but the exact
-    ``uuid4().hex`` shape (32 lowercase hex chars)."""
+    """The id becomes a filename (files backend) / a key (postgres) — allow
+    uuid4().hex and the main backend's dashed UUIDs, nothing path-hostile."""
     return isinstance(chat_id, str) and _CHAT_ID_RE.fullmatch(chat_id) is not None
 
 
 class ChatStore:
-    """File-backed chat store. All paths live under ``settings.chats_dir``."""
+    """Chat store facade: file-backed by default (all paths under
+    ``settings.chats_dir``); ``CHAT_STORE=postgres`` swaps the persistence
+    for the JSONB ``voice_chats`` table while every caller keeps this same
+    interface. ``append_message`` lives here once — it funnels into save()."""
 
     def __init__(self, settings: Settings) -> None:
         self._root = Path(settings.chats_dir)
+        self._pg = None
+        if (
+            getattr(settings, "chat_store", "files") == "postgres"
+            and getattr(settings, "database_url", "")
+        ):
+            from app.voice.chat.store_pg import PgChatBackend
+
+            self._pg = PgChatBackend(settings)
 
     def _dir(self, user_id: str) -> Path:
         d = self._root / user_id
@@ -69,8 +82,13 @@ class ChatStore:
     def _path(self, user_id: str, chat_id: str) -> Path:
         return self._dir(user_id) / f"{chat_id}.json"
 
-    def create(self, user_id: str) -> ChatDoc:
+    def create(self, user_id: str, chat_id: str | None = None) -> ChatDoc:
+        """``chat_id`` lets the WS path adopt an id minted by the MAIN Growz
+        backend (auto-create on unknown chat.start ids) — the id is theirs,
+        we just store under it."""
         doc = new_chat_doc(user_id)
+        if chat_id:
+            doc.id = chat_id
         self.save(doc)
         return doc
 
@@ -79,6 +97,10 @@ class ChatStore:
         as missing (the caller must keep working)."""
         if not valid_device_id(user_id) or not valid_chat_id(chat_id):
             return None
+        if self._pg is not None:
+            # chat_id alone is the identity in postgres (team decision):
+            # a chat may be opened from several devices, so no owner check.
+            return self._pg.read(chat_id)
         path = self._path(user_id, chat_id)
         if not path.exists():
             return None
@@ -94,6 +116,9 @@ class ChatStore:
 
     def save(self, doc: ChatDoc) -> None:
         """Atomic write (tmp + os.replace), identical to MemoryStore.save."""
+        if self._pg is not None:
+            self._pg.save(doc)
+            return
         try:
             doc.title = (doc.title or "")[:_MAX_TITLE_CHARS]
             if len(doc.messages) > _MAX_MESSAGES:
@@ -128,6 +153,8 @@ class ChatStore:
         (sidelined) — the list never fails because of one bad file."""
         if not valid_device_id(user_id):
             return []
+        if self._pg is not None:
+            return self._pg.list_summaries(user_id, limit)
         d = self._root / user_id
         if not d.exists():
             return []

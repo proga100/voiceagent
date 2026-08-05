@@ -255,9 +255,21 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                         and hasattr(session, "set_tool_extension")
                     ):
                         try:
+                            from app.voice.chat.store import valid_chat_id
+
                             chat_store = ChatStore(settings)
                             doc = chat_store.read(user_id, chat_id)
-                            if doc is not None and doc.user_id == user_id:
+                            if doc is None and valid_chat_id(chat_id):
+                                # Auto-create (2026-08-05): the id is MINTED by
+                                # the main Growz backend (App <-> Main <-> AI
+                                # topology) — an unknown id starts a fresh chat
+                                # under it instead of degrading to a plain,
+                                # guideless session.
+                                doc = chat_store.create(user_id, chat_id)
+                                logger.info(
+                                    "chat auto-created for external id %s", chat_id
+                                )
+                            if doc is not None:
                                 chat_doc = doc
                         except Exception:  # noqa: BLE001
                             logger.exception("chat load failed — continuing without")

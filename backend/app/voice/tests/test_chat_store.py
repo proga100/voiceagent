@@ -16,11 +16,16 @@ def store(tmp_path):
 
 
 def test_valid_chat_id():
+    # Widened 2026-08-05: external ids from the MAIN Growz backend (dashed
+    # UUIDs) are first-class now — anything filesystem/key-safe, 8..64 chars.
     doc = new_chat_doc(DEV)
     assert valid_chat_id(doc.id)
-    assert not valid_chat_id("not-hex-and-wrong-length")
-    assert not valid_chat_id("a" * 31)  # too short
-    assert not valid_chat_id("A" * 32)  # uppercase not allowed
+    assert valid_chat_id("550e8400-e29b-41d4-a716-446655440000")  # dashed UUID
+    assert valid_chat_id("A" * 32)          # case no longer matters
+    assert not valid_chat_id("a" * 7)       # too short
+    assert not valid_chat_id("x" * 65)      # too long
+    assert not valid_chat_id("../../etc")   # path-hostile
+    assert not valid_chat_id("a b c d e")   # spaces
     assert not valid_chat_id(None)
     assert not valid_chat_id(42)
 

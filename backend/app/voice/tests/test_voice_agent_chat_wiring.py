@@ -225,11 +225,27 @@ async def test_resumed_finished_chat_skips_guide_and_records_consult_turns(
     assert saved.messages[-1].text == "Bargi sarg'ayib qoldi"
 
 
-async def test_invalid_chat_id_falls_back_to_plain_session(monkeypatch, settings):
+async def test_unknown_chat_id_is_auto_created(monkeypatch, settings):
+    # 2026-08-05 (App <-> Main <-> AI topology): the main backend mints the
+    # id — an unknown but well-formed chat_id starts a FRESH chat under it.
+    session = _FakeChatSession()
+    monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
+    ext = "550e8400-e29b-41d4-a716-446655440000"
+    ws = _FakeWebSocket([
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": ext}),
+    ])
+    await voice_agent.run_voice_agent(ws, settings, "t")
+    # The guide wired up and spoke: snapshot + first question went out.
+    assert _sent_types(ws)[:2] == ["chat.step", "chat.question"]
+    saved = ChatStore(settings).read(DEV, ext)
+    assert saved is not None and saved.id == ext
+
+
+async def test_hostile_chat_id_falls_back_to_plain_session(monkeypatch, settings):
     session = _FakeChatSession()
     monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
     ws = _FakeWebSocket([
-        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": "does-not-exist"}),
+        _text_frame({"type": "chat.start", "user_id": DEV, "chat_id": "../etc/x"}),
     ])
     await voice_agent.run_voice_agent(ws, settings, "t")
     assert ws.sent_json == []

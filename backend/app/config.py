@@ -133,6 +133,15 @@ class Settings(BaseSettings):
     # VOICE_TESTER_ENABLED=false on any host where it should not be public.
     voice_tester_enabled: bool = True
 
+    # ---- Chat storage backend ----
+    # "files" (default) — one JSON per chat under chats_dir, zero deps.
+    # "postgres" — the whole ChatDoc in a JSONB column (voice_chats table),
+    # created automatically on first use. chat_id ALONE is the identity (the
+    # main Growz backend mints it); user_id is a plain attribute. Needs
+    # DATABASE_URL, e.g. postgresql://user:pass@localhost:5432/growz_ai_prod
+    chat_store: Literal["files", "postgres"] = "files"
+    database_url: str = ""
+
     # When Azure TTS dies mid-session (revoked key, quota, outage), keep talking
     # with Gemini Live's own audio instead of going silent. The tradeoff is the
     # accent: Gemini approximates Uzbek, Azure is native. Off = surface the error.
