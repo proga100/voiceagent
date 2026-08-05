@@ -39,8 +39,6 @@ sealed class ServerEvent {
         return const TtsFinished();
       case 'agent.interrupted':
         return const AgentInterrupted();
-      case 'usage':
-        return UsageEvent.fromJson(json);
       case 'usage_azure':
         return UsageAzure(chars: _int(json['chars']));
       case 'error':
@@ -133,31 +131,6 @@ class TtsFinished extends ServerEvent {
 /// playback instantly and close the avatar mouth.
 class AgentInterrupted extends ServerEvent {
   const AgentInterrupted();
-}
-
-/// Token accounting for the debug panel. Modality maps are `{"AUDIO": n, ...}`.
-class UsageEvent extends ServerEvent {
-  const UsageEvent({
-    required this.total,
-    required this.prompt,
-    required this.response,
-    required this.promptModalities,
-    required this.responseModalities,
-  });
-
-  final int total;
-  final int prompt;
-  final int response;
-  final Map<String, int> promptModalities;
-  final Map<String, int> responseModalities;
-
-  factory UsageEvent.fromJson(Map<String, dynamic> json) => UsageEvent(
-    total: _int(json['total']),
-    prompt: _int(json['prompt']),
-    response: _int(json['response']),
-    promptModalities: _intMap(json['prompt_modalities']),
-    responseModalities: _intMap(json['response_modalities']),
-  );
 }
 
 /// Azure TTS character accounting for the debug panel.
@@ -675,10 +648,6 @@ List<dynamic> _list(dynamic v) => v is List ? v : const [];
 
 List<String> _strList(dynamic v) =>
     v is List ? v.map((e) => e.toString()).toList(growable: false) : const [];
-
-Map<String, int> _intMap(dynamic v) => v is Map
-    ? v.map((k, val) => MapEntry(k.toString(), val is num ? val.toInt() : 0))
-    : const {};
 
 double? _numOrNull(dynamic v) =>
     v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);

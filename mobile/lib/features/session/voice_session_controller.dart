@@ -40,7 +40,6 @@ enum SessionState { disconnected, connecting, live, error }
 class SessionSnapshot {
   const SessionSnapshot({
     this.state = SessionState.disconnected,
-    this.usage,
     this.azureChars,
     this.micLevel = 0,
     this.pttHeld = false,
@@ -52,8 +51,6 @@ class SessionSnapshot {
   /// True while the farmer holds the push-to-talk button (mic streaming).
   final bool pttHeld;
 
-  /// Latest token usage, for the debug row.
-  final UsageEvent? usage;
 
   /// Latest Azure TTS character count, for the debug row.
   final int? azureChars;
@@ -66,7 +63,6 @@ class SessionSnapshot {
 
   SessionSnapshot copyWith({
     SessionState? state,
-    UsageEvent? usage,
     int? azureChars,
     double? micLevel,
     bool? pttHeld,
@@ -74,7 +70,6 @@ class SessionSnapshot {
     bool clearError = false,
   }) => SessionSnapshot(
     state: state ?? this.state,
-    usage: usage ?? this.usage,
     azureChars: azureChars ?? this.azureChars,
     micLevel: micLevel ?? this.micLevel,
     pttHeld: pttHeld ?? this.pttHeld,
@@ -459,8 +454,6 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
       case AgentInterrupted():
         _flushPlayback();
         transcript.onAgentDone();
-      case UsageEvent u:
-        state = state.copyWith(usage: u);
       case UsageAzure(:final chars):
         state = state.copyWith(azureChars: chars);
       case ErrorEvent(:final code, :final message):

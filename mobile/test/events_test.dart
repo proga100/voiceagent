@@ -30,22 +30,11 @@ void main() {
       );
     });
 
-    test('usage with modality maps', () {
-      final e = ServerEvent.fromJson({
-        'type': 'usage',
-        'total': 30,
-        'prompt': 20,
-        'response': 10,
-        'prompt_modalities': {'AUDIO': 18, 'TEXT': 2},
-        'response_modalities': {'TEXT': 10},
-      });
-      expect(e, isA<UsageEvent>());
-      final u = e as UsageEvent;
-      expect(u.total, 30);
-      expect(u.prompt, 20);
-      expect(u.response, 10);
-      expect(u.promptModalities['AUDIO'], 18);
-      expect(u.responseModalities['TEXT'], 10);
+    test('usage is no longer part of the protocol -> unknown event', () {
+      // Server-side telemetry only (team decision 2026-08-05): the server
+      // logs token counts instead of sending them to the farmer's app.
+      final e = ServerEvent.fromJson({'type': 'usage', 'total': 30});
+      expect(e, isA<UnknownEvent>());
     });
 
     test('usage_azure', () {

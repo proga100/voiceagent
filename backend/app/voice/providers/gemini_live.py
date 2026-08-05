@@ -594,9 +594,13 @@ class GeminiLiveSession:
                     # the reply instead (from the output transcription below).
                     if data and not self._azure_mode:
                         await self._send_bytes(data)
+                    # Token usage is intentionally NOT forwarded to the client
+                    # (team decision 2026-08-05): it's server-side telemetry,
+                    # not something the farmer's app acts on. Log it instead so
+                    # cost visibility survives the removal.
                     um = getattr(response, "usage_metadata", None)
                     if um is not None:
-                        await self._send_json(self._usage_payload(um))
+                        logger.debug("live usage: %s", self._usage_payload(um))
                     # Case tools: the model may call request_photo / finalize_case,
                     # or the server may cancel an in-flight call (barge-in etc.).
                     tc = getattr(response, "tool_call", None)
