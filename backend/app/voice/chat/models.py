@@ -70,7 +70,8 @@ UZ: dict[str, str] = {
     # from question.options, so the frozen/mirrored contract in the module
     # docstring explicitly does NOT cover this option.
     "optDonePhotos": "Tayyor",
-    "optSkipPhoto": "Rasmsiz davom etish",
+    # "optSkipPhoto" removed 2026-08-05 — a photo is mandatory, there is no
+    # skip route (neither a button nor a spoken option).
     "photoMarker": "[rasm]",
     "photoBubble": "📷 Rasm",
     "qGeneral": "Savolingizni bemalol ayting",
@@ -166,10 +167,11 @@ STEPS: dict[str, dict] = {
     "photo": {
         "kind": "photo",
         "prompt": UZ["qPhoto"],
+        # Team decision (2026-08-05): a photo is MANDATORY — the "skip"
+        # option is gone, and done_photos only counts once a photo landed.
         "options": [
             ("take_photo", UZ["optTakePhoto"]),
             ("done_photos", UZ["optDonePhotos"]),
-            ("skip", UZ["optSkipPhoto"]),
         ],
     },
     "general": {

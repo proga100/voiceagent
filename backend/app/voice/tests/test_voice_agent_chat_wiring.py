@@ -1,6 +1,7 @@
 """Integration-style tests for the multichat wiring in voice_agent.py: a fake
 Live-shaped session drives run_voice_agent end-to-end and asserts the exact
 chat.* WS events + REST-visible ChatStore side effects (contract §1, §4.8)."""
+import base64
 import json
 
 import pytest
@@ -131,8 +132,12 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
          "option_id": "leaf"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "symptom",
          "option_id": "to_photo"},
+        # A photo is mandatory (2026-08-05): done_photos with nothing
+        # collected is rejected, so upload one first.
+        {"type": "photo.upload", "photo_id": "photo-1",
+         "data": base64.b64encode(b"\x89PNG").decode(), "mime": "image/png"},
         {"type": "chat.answer", "chat_id": doc.id, "step_id": "photo",
-         "option_id": "skip"},
+         "option_id": "done_photos"},
         {"type": "session.end"},
     ]
     ws = _FakeWebSocket([_text_frame(e) for e in events])
@@ -151,7 +156,8 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
         "chat.step", "chat.state", "chat.question",  # crop_context -> plant_part
         "chat.step", "chat.state", "chat.question",  # plant_part -> symptom
         "chat.step", "chat.state", "chat.question",  # symptom -> photo
-        "chat.step", "chat.state",       # photo -> consult
+        "chat.step", "chat.question",    # photo.upload -> counted, bar re-shown
+        "chat.step", "chat.state",       # done_photos -> consult
     ]
     assert ws.sent_json[0]["phase"] == "guide"
     assert ws.sent_json[1]["step_id"] == "query_type"

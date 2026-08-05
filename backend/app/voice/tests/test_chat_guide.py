@@ -457,7 +457,9 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     assert rec.sent[-2]["phase"] == "guide"
     assert rec.last("chat.question")["step_id"] == "photo"
 
-    await guide.on_answer("photo", "skip", "")
+    # A photo is mandatory (2026-08-05): send one, then close with «Tayyor».
+    await guide.on_photo_received("photo-1", None)
+    await guide.on_answer("photo", "done_photos", "")
     assert doc.finished is True
     assert rec.sent_types()[-1] == "chat.state"
     assert rec.sent[-1]["phase"] == "consult"
@@ -467,7 +469,7 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     assert "qismi — Bargida" in rec.spoken[-1]
     assert "belgilar — suhbatda aytilgan" in rec.spoken[-1]
     assert "yigʻilgan belgilar va rasm asosida" in rec.spoken[-1]
-    assert "rasm yoʻq" in rec.spoken[-1]
+    assert "rasm yoʻq" not in rec.spoken[-1], "a photo was sent"
     # Chat title recomputed from the accepted selections.
     assert doc.title == "Pomidor — kasallik"
     # finalize_case=None (default wiring) -> the deterministic finalize is a
@@ -632,17 +634,42 @@ async def test_done_photos_after_two_photos_finalizes_and_finishes(store):
     assert rec.last("chat.state")["phase"] == "consult"
 
 
-async def test_skip_with_zero_photos_finalizes_and_finishes(store):
+async def test_skip_is_rejected_a_photo_is_mandatory(store):
+    # Team decision (2026-08-05): the interview cannot finish photo-less.
     doc = new_chat_doc(DEV)
     _disease_pest_at_photo(doc)
     guide, rec = _guide(store, doc, wire_finalize=True)
     await guide.start()
     await guide.on_answer("photo", "skip", "")
     assert doc.photos_collected == 0
-    assert doc.finished is True
-    assert len(rec.finalized) == 1
-    assert rec.finalized[0]["crop"] == "Pomidor"
-    assert rec.last("chat.state")["phase"] == "consult"
+    assert doc.finished is False, "skip must not finish the interview"
+    assert rec.finalized == [], "skip must not trigger a diagnosis"
+    assert guide.pending_step() == "photo"
+
+
+async def test_done_photos_with_zero_photos_is_rejected(store):
+    # …and done_photos must not become a back-door skip.
+    doc = new_chat_doc(DEV)
+    _disease_pest_at_photo(doc)
+    guide, rec = _guide(store, doc, wire_finalize=True)
+    await guide.start()
+    await guide.on_answer("photo", "done_photos", "")
+    assert doc.finished is False
+    assert rec.finalized == []
+    assert guide.pending_step() == "photo"
+
+
+async def test_done_photos_button_hidden_until_a_photo_lands(store):
+    doc = new_chat_doc(DEV)
+    _disease_pest_at_photo(doc)
+    guide, rec = _guide(store, doc, wire_finalize=True)
+    await guide.start()
+    assert [o["id"] for o in rec.last("chat.question")["options"]] == ["take_photo"]
+
+    await guide.on_photo_received("photo-1", None)
+    assert [o["id"] for o in rec.last("chat.question")["options"]] == [
+        "take_photo", "done_photos",
+    ]
 
 
 async def test_photo_cap_auto_finalizes_at_five(store):
@@ -669,6 +696,7 @@ async def test_done_photos_is_none_safe_without_a_finalize_callback(store):
     _disease_pest_at_photo(doc)
     guide, rec = _guide(store, doc)  # no finalize wired
     await guide.start()
+    await guide.on_photo_received("photo-1", None)
     await guide.on_answer("photo", "done_photos", "")
     assert doc.finished is True
     assert guide.degraded is False
@@ -685,6 +713,7 @@ async def test_finalize_callback_failure_degrades_to_consult(store):
     _disease_pest_at_photo(doc)
     guide, rec = _guide(store, doc, finalize_case=_boom)
     await guide.start()
+    await guide.on_photo_received("photo-1", None)
     await guide.on_answer("photo", "done_photos", "")
     assert guide.degraded is True
     assert rec.last("chat.state")["phase"] == "consult"

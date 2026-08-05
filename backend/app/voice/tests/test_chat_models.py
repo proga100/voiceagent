@@ -184,13 +184,12 @@ def test_query_type_and_crop_and_photo_step_shapes():
     assert STEPS["crop"]["kind"] == "crop_picker"
     assert dict(STEPS["crop"]["options"]) == {"open_crop_picker": "Ekinlar"}
     assert STEPS["photo"]["kind"] == "photo"
-    # Multi-photo loop: «Tayyor» (done_photos) sits between the camera and skip
-    # (mobile renders in payload order).
+    # A photo is mandatory (2026-08-05): no skip option exists at all.
     assert STEPS["photo"]["options"] == [
         ("take_photo", "Rasm tanlash"),
         ("done_photos", "Tayyor"),
-        ("skip", "Rasmsiz davom etish"),
     ]
+    assert not [o for o in STEPS["photo"]["options"] if o[0] == "skip"]
 
 
 def test_symptom_general_diag_offer_step_shapes():

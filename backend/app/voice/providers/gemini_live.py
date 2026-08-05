@@ -1248,8 +1248,12 @@ class GeminiLiveSession:
         await self._speak_text(f"[KAMERA: {tip}. Fermerga buni bir jumlada ayt.]")
 
     async def on_camera_cancelled(self) -> None:
-        """Farmer dismissed the camera — tell the model to carry on photo-less."""
-        await self._speak_text("[Fermer rasm olmadi. Rasmsiz davom et.]")
+        """Farmer dismissed the camera. A photo is mandatory now (2026-08-05),
+        so the model asks again instead of carrying on photo-less."""
+        await self._speak_text(
+            "[Fermer kamerani yopdi. Rasm tashxis uchun SHART — nega "
+            "kerakligini bir jumlada muloyim tushuntir va yana soʻra.]"
+        )
 
     async def close(self) -> None:
         # closed-by-user signal FIRST: the receive loop checks self._closed

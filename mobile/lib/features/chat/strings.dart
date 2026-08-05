@@ -53,7 +53,8 @@ abstract final class S {
 
   static const String qPhoto = 'Kasallangan qismning rasmini yuboring';
   static const String optTakePhoto = 'Rasm tanlash';
-  static const String optSkipPhoto = 'Rasmsiz davom etish';
+  // optSkipPhoto removed 2026-08-05 — a photo is mandatory; the server never
+  // sends a skip option, so the app has no button to label.
   static const String photoMarker = '[rasm]';
   static const String photoBubble = '📷 Rasm';
 

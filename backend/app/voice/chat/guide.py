@@ -130,12 +130,13 @@ _PHOTO_SPOKEN_Q = (
     "yaqindan, imkon boʻlsa ildiz. Yuborganingizdan soʻng javob beraman."
 )
 
-# contract §4.6: the photo step's {opts} carries an extra note (only "skip"
-# is a spoken option; the photo itself comes from the on-screen button).
+# contract §4.6: the photo step's {opts}. A photo is MANDATORY now — there is
+# no skip route, and done_photos is only valid once at least one photo landed.
 _PHOTO_OPTS = (
     f"take_photo=«{UZ['optTakePhoto']}» (ekranda kamera ochadi), "
-    f"done_photos=«{UZ['optDonePhotos']}» (tashxisni boshlaydi), "
-    f"skip=«{UZ['optSkipPhoto']}»"
+    f"done_photos=«{UZ['optDonePhotos']}» (tashxisni boshlaydi — faqat "
+    "kamida bitta rasm yuborilgandan keyin). Rasmsiz davom etib boʻlmaydi: "
+    "fermer rad etsa ham, rasm zarurligini muloyim tushuntir va soʻrayver."
 )
 
 _SY_BODY = (
@@ -807,9 +808,9 @@ class ChatGuide:
             label = (value or "").strip() or option_id
             return option_id, value, label
         if step_id == "photo":
-            if option_id == "skip":
-                return "skip", "", UZ["optSkipPhoto"]
-            if option_id == "done_photos":
+            # A photo is mandatory: "skip" is gone entirely, and done_photos
+            # with nothing collected would be a skip through the back door.
+            if option_id == "done_photos" and self.doc.photos_collected > 0:
                 return "done_photos", "", UZ["optDonePhotos"]
             return None
         label = _label_for(step_id, option_id)
@@ -1380,6 +1381,10 @@ class ChatGuide:
             options = await self._crop_question_options()
         else:
             options = step["options"]
+        if step_id == "photo" and self.doc.photos_collected == 0:
+            # A photo is mandatory: «Tayyor» would be a dead button (and a
+            # back-door skip) until at least one photo has landed.
+            options = [o for o in options if o[0] != "done_photos"]
         if step_id == "crop_context":
             # Server-driven anketa: the farmer answers by voice/text, buttons
             # are pointless while it runs (to_symptom stays accepted as the
