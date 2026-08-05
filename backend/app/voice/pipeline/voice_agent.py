@@ -315,10 +315,12 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     await session.on_user_text(txt[:500])
             elif etype == "chat.answer" and chat_guide is not None:
                 if event.get("chat_id") == chat_guide.doc.id:
+                    crop_obj = event.get("crop")
                     await chat_guide.on_answer(
                         event.get("step_id") or "",
                         event.get("option_id") or "",
                         event.get("value") or "",
+                        crop=crop_obj if isinstance(crop_obj, dict) else None,
                     )
             elif etype == "photo.upload" and hasattr(session, "on_photo"):
                 # Base64 JPEG/PNG from the client camera (binary frames stay mic-only).

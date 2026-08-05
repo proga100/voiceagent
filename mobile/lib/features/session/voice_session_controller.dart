@@ -329,7 +329,13 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
   /// a different path entirely — captured server-side by the Live
   /// `select_option` tool — so this is only called from [GuideOptionsBar]
   /// taps. A no-op outside a bound, live session.
-  void sendChatAnswer(String stepId, {String optionId = '', String value = ''}) {
+  void sendChatAnswer(
+    String stepId, {
+    String optionId = '',
+    String value = '',
+    String? cropId,
+    String? cropName,
+  }) {
     final chatId = _chatId;
     if (chatId == null || state.state != SessionState.live) return;
     _socket?.send(
@@ -338,6 +344,8 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         stepId: stepId,
         optionId: optionId,
         value: value,
+        cropId: cropId,
+        cropName: cropName,
       ),
     );
   }

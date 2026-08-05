@@ -286,9 +286,17 @@ function mkBtn(id, label, step) {
       $('photoFile').click();
       return;
     }
-    send({type: 'chat.answer', chat_id: $('cid').value,
-          step_id: step, option_id: id,
-          value: step === 'crop' ? label : ''});
+    if (step === 'crop' && id === 'open_crop_picker') {
+      // Не ответ: как в приложении, эта кнопка открывает каталог культур.
+      // Ответом станет выбранная культура (её UUID + название).
+      openCropPicker(step);
+      return;
+    }
+    const answer = {type: 'chat.answer', chat_id: $('cid').value,
+                    step_id: step, option_id: id, value: ''};
+    // Сохранённая культура (чип на шаге crop): культура — отдельным объектом.
+    if (step === 'crop') answer.crop = {id: id, name: label};
+    send(answer);
     $('qbox').innerHTML = '<p class="hint">Ответ отправлен, ждём следующий шаг…</p>';
   };
   return b;
@@ -454,6 +462,54 @@ $('photoFile').onchange = async ev => {
   }
 };
 
+/* ---- каталог культур: открывается кнопкой «Ekinlar» на шаге crop ---- */
+async function openCropPicker(step) {
+  const base = httpBase(wsUrlNorm());
+  let crops = [];
+  try {
+    const r = await fetch(base + '/crops');
+    crops = (await r.json()).data || [];
+  } catch (e) {
+    log('err', 'crops', String(e));
+    return;
+  }
+  if (!crops.length) {
+    log('err', 'crops', 'каталог пуст — на сервере не задан GROWZ_API_KEY?');
+    return;
+  }
+  log('in', 'crops', 'каталог получен: ' + crops.length + ' культур');
+  const box = $('qbox');
+  box.innerHTML = `<div class="sid">crop · выбор из каталога (${crops.length})</div>`;
+  const inp = document.createElement('input');
+  inp.placeholder = 'Qidirish… (например: pomidor)';
+  box.appendChild(inp);
+  const list = document.createElement('div');
+  list.style.cssText = 'max-height:240px;overflow-y:auto;margin-top:8px';
+  box.appendChild(list);
+  const render = q => {
+    list.innerHTML = '';
+    crops
+      .filter(c => (c.name || '').toLowerCase().includes(q.toLowerCase()))
+      .slice(0, 30)
+      .forEach(c => {
+        const b = document.createElement('button');
+        b.className = 'opt';
+        b.textContent = c.name;
+        b.onclick = () => {
+          // option_id — нажатая кнопка; сама культура едет отдельным объектом.
+          send({type: 'chat.answer', chat_id: $('cid').value,
+                step_id: step, option_id: 'open_crop_picker', value: '',
+                crop: {id: c.id, name: c.name}});
+          box.innerHTML = '<p class="hint">Ответ отправлен, ждём следующий шаг…</p>';
+        };
+        list.appendChild(b);
+      });
+  };
+  inp.oninput = () => render(inp.value);
+  render('');
+  inp.focus();
+}
+
 /* ---- REST: создать чат ---- */
 $('bChat').onclick = async () => {
   const base = httpBase(wsUrlNorm());
@@ -482,7 +538,12 @@ $('bChat').onclick = async () => {
 
 /* ---- WebSocket ---- */
 $('bConn').onclick = () => {
-  if (sock) sock.close();
+  if (sock) {
+    // Отцепляем обработчики СТАРОГО сокета: его запоздалый onclose иначе
+    // прилетает уже после onopen нового и гасит кнопки у живого соединения.
+    sock.onclose = sock.onerror = sock.onmessage = sock.onopen = null;
+    try { sock.close(1000); } catch (_) {}
+  }
   const url = wsUrlNorm() + '?token=' + encodeURIComponent($('tok').value);
   setStatus('подключаемся…');
   log('out', 'CONNECT', url);

@@ -178,6 +178,15 @@ class CaseDiagnosis(BaseModel):
 # below document the exact shapes both sides agreed on.
 
 
+class ChatAnswerCrop(BaseModel):
+    """The crop picked on the ``crop`` step. Carried as its own object so
+    ``option_id`` can keep naming the tapped button (``open_crop_picker`` / a
+    saved chip) instead of doubling as a data field."""
+
+    id: str = ""
+    name: str = ""
+
+
 class ChatAnswer(BaseModel):
     # v2: step_id also carries "symptom" | "general" | "diag_offer" — see
     # docs/multichat_contract.md §1.5. diag_offer is the one step id that is
@@ -187,6 +196,8 @@ class ChatAnswer(BaseModel):
     step_id: str = ""
     option_id: str = ""
     value: str = ""
+    # Only on the crop step; other steps omit it.
+    crop: ChatAnswerCrop | None = None
 
 
 class ChatOption(BaseModel):

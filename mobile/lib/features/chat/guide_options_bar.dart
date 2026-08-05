@@ -240,14 +240,20 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
     ChatQuestion question, {
     required String optionId,
     String value = '',
+    String? cropId,
+    String? cropName,
   }) {
     setState(() {
       _sentForStepId = question.stepId;
       _lastLatchedQuestion = question;
     });
-    ref
-        .read(voiceSessionProvider.notifier)
-        .sendChatAnswer(question.stepId, optionId: optionId, value: value);
+    ref.read(voiceSessionProvider.notifier).sendChatAnswer(
+          question.stepId,
+          optionId: optionId,
+          value: value,
+          cropId: cropId,
+          cropName: cropName,
+        );
   }
 
   /// Opens the guided camera for the `photo` step. The requested part is the
@@ -314,10 +320,13 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
       ),
     );
     if (picked == null || !mounted) return;
+    // sendValue == a crop pick: the crop rides as its own object; option_id
+    // stays the tapped chip. Plain button sheets keep option_id only.
     _answer(
       question,
       optionId: picked.id,
-      value: sendValue ? picked.label : '',
+      cropId: sendValue ? picked.id : null,
+      cropName: sendValue ? picked.label : null,
     );
   }
 
@@ -339,6 +348,11 @@ class _GuideOptionsBarState extends ConsumerState<GuideOptionsBar> {
     );
     if (crop == null || !mounted) return;
     ref.read(selectedCropProvider.notifier).select(crop);
-    _answer(question, optionId: crop.id, value: crop.name);
+    _answer(
+      question,
+      optionId: 'open_crop_picker',
+      cropId: crop.id,
+      cropName: crop.name,
+    );
   }
 }

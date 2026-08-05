@@ -211,6 +211,62 @@ async def test_start_resumes_mid_guide_at_the_correct_pending_step(store):
     assert question["step_id"] == "crop"
 
 
+async def test_crop_step_rejects_the_open_crop_picker_sentinel(store):
+    # "open_crop_picker" is the UI button that OPENS the catalogue, not a crop.
+    # A client that echoes it as chat.answer (the WS tester did, 2026-08-05)
+    # must be ignored like any invalid answer — otherwise it persists as
+    # crop_id and the diagnosis later runs against a crop named "Ekinlar".
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+    steps_before = len([e for e in rec.sent if e.get("type") == "chat.step"])
+
+    await guide.on_answer("crop", "open_crop_picker", "Ekinlar")
+
+    assert doc.crop_id == ""
+    assert doc.crop_name == ""
+    assert guide.pending_step() == "crop", "the step must not advance"
+    steps_after = len([e for e in rec.sent if e.get("type") == "chat.step"])
+    assert steps_after == steps_before, "no ack for a rejected answer"
+
+
+async def test_crop_answer_new_shape_carries_the_crop_as_an_object(store):
+    # New payload: option_id names the tapped button (open_crop_picker), the
+    # picked crop rides as crop={id,name}. The sentinel in option_id must NOT
+    # be rejected when the crop object carries real data.
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+
+    await guide.on_answer(
+        "crop", "open_crop_picker", "",
+        crop={"id": "uuid-pomidor", "name": "Pomidor"},
+    )
+
+    assert doc.crop_id == "uuid-pomidor"
+    assert doc.crop_name == "Pomidor"
+    step = rec.last("chat.step")
+    assert step["option_id"] == "uuid-pomidor"
+    assert step["label"] == "Pomidor"
+
+
+async def test_crop_answer_new_shape_with_empty_crop_id_is_rejected(store):
+    # A crop object without an id is as invalid as the bare sentinel.
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    await guide.start()
+    await guide.on_answer("query_type", "disease_pest", "")
+
+    await guide.on_answer(
+        "crop", "open_crop_picker", "", crop={"id": "", "name": "Pomidor"}
+    )
+
+    assert doc.crop_id == ""
+    assert guide.pending_step() == "crop"
+
+
 async def test_crop_commit_injects_saved_planting_profile(store):
     # Committing a SAVED crop pushes its profile into the model's context so
     # Rais can answer «ekinim haqida nima bilasan?» during the chat.

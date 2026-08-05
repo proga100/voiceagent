@@ -761,7 +761,11 @@ class ChatGuide:
     def _validate(self, step_id: str, option_id: str, value: str) -> tuple[str, str, str] | None:
         if step_id == "crop":
             option_id = (option_id or "").strip()
-            if not option_id:
+            # "open_crop_picker" is the UI sentinel that OPENS the catalogue —
+            # not a crop. A client that echoes it as the answer (seen from the
+            # WS tester, 2026-08-05) would otherwise get it persisted as
+            # crop_id and the interview would carry a bogus crop to diagnosis.
+            if not option_id or option_id == "open_crop_picker":
                 return None
             label = (value or "").strip() or option_id
             return option_id, value, label
@@ -822,12 +826,24 @@ class ChatGuide:
             logger.exception("chat guide start failed")
             await self._degrade()
 
-    async def on_answer(self, step_id: str, option_id: str, value: str) -> None:
+    async def on_answer(
+        self, step_id: str, option_id: str, value: str,
+        crop: dict | None = None,
+    ) -> None:
         """A tapped ``chat.answer`` (contract §1.5). Stale/mismatched
         step_id or unknown option_id -> ignored silently. ``diag_offer`` is
         the one step id valid while pending() is a DIFFERENT id
-        (``general`` — contract §4.4 f)."""
+        (``general`` — contract §4.4 f).
+
+        For the crop step the client sends ``option_id`` as the BUTTON that was
+        tapped (``open_crop_picker`` / a saved chip) and the picked crop as a
+        separate ``crop: {id, name}`` object — so an option id that was never
+        in the question's options list no longer doubles as a data carrier.
+        """
         try:
+            if step_id == "crop" and isinstance(crop, dict):
+                option_id = str(crop.get("id") or "").strip()
+                value = str(crop.get("name") or "").strip()
             if self.degraded or self.doc.finished:
                 return
             pending = self.pending_step()

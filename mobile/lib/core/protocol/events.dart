@@ -635,8 +635,16 @@ class ChatAnswerRequest extends ClientEvent {
     required this.stepId,
     this.optionId = '',
     this.value = '',
+    this.cropId,
+    this.cropName,
   });
   final String chatId, stepId, optionId, value;
+
+  /// Crop step only: the picked crop travels as its own `crop: {id, name}`
+  /// object, so `option_id` keeps naming the tapped button
+  /// (`open_crop_picker` / a saved chip) instead of doubling as data.
+  final String? cropId, cropName;
+
   @override
   Map<String, dynamic> toJson() => {
     'type': 'chat.answer',
@@ -644,6 +652,7 @@ class ChatAnswerRequest extends ClientEvent {
     'step_id': stepId,
     'option_id': optionId,
     'value': value,
+    if (cropId != null) 'crop': {'id': cropId, 'name': cropName ?? ''},
   };
 }
 

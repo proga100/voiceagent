@@ -657,6 +657,24 @@ void main() {
       });
     });
 
+    test('chat.answer on the crop step carries the crop as an object', () {
+      const e = ChatAnswerRequest(
+        chatId: 'c1',
+        stepId: 'crop',
+        optionId: 'open_crop_picker',
+        cropId: '6a91-growz-uuid',
+        cropName: 'Pomidor',
+      );
+      expect(e.toJson(), {
+        'type': 'chat.answer',
+        'chat_id': 'c1',
+        'step_id': 'crop',
+        'option_id': 'open_crop_picker',
+        'value': '',
+        'crop': {'id': '6a91-growz-uuid', 'name': 'Pomidor'},
+      });
+    });
+
     test('chat.answer (buttons/crop_picker answer)', () {
       const e = ChatAnswerRequest(
         chatId: 'c1',
