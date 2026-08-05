@@ -521,7 +521,10 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
       case ChatStateEvent(:final phase, :final selections):
         ref.read(guidePhaseProvider.notifier).set(phase);
         ref.read(guideSelectionsProvider.notifier).setAll(selections);
-        if (phase == 'consult') {
+        if (phase == 'consult' || phase == 'crop_context') {
+          // crop_context anketa sends NO chat.question (the question arrives
+          // as voice + subtitles) — clear the bar so the previous step's
+          // buttons don't linger.
           ref.read(guideQuestionProvider.notifier).clear();
         }
       case ChatQuestion q:

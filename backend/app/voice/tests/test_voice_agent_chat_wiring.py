@@ -147,7 +147,7 @@ async def test_new_chat_full_guided_flow_over_the_socket(monkeypatch, settings):
     assert _sent_types(ws) == [
         "chat.state", "chat.question",   # guide.start()
         "chat.step", "chat.question",    # query_type -> crop
-        "chat.step", "chat.state", "chat.question",  # crop -> crop_context
+        "chat.step", "chat.state",  # crop -> crop_context (anketa: chat.question yoʻq)
         "chat.step", "chat.state", "chat.question",  # crop_context -> plant_part
         "chat.step", "chat.state", "chat.question",  # plant_part -> symptom
         "chat.step", "chat.state", "chat.question",  # symptom -> photo

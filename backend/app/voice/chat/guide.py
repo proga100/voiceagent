@@ -1034,16 +1034,15 @@ class ChatGuide:
             await self._degrade()
 
     async def _cc_ask_next(self) -> None:
-        """An anketa answer just landed — send the NEXT fixed question as its
-        own chat.question and have the model voice exactly it. Guarded (like
-        the backstops) against a phase change while this task was scheduled."""
+        """An anketa answer just landed — have the model voice EXACTLY the
+        next fixed question (no chat.question for the anketa, team decision).
+        Guarded against a phase change while this task was scheduled."""
         try:
             if self.degraded or self.doc.finished or self.pending_step() != "crop_context":
                 return
             pend = self._cc_pending()
             if pend is None:
                 return
-            await self._emit_question("crop_context")
             await self._speak_raw(_SCRIPT_CC_ASK.format(q=pend[1]))
         except Exception:  # noqa: BLE001
             logger.exception("chat guide crop_context ask-next failed")
@@ -1370,6 +1369,12 @@ class ChatGuide:
         return STEPS[step_id]["prompt"]
 
     async def _resend_question(self, step_id: str) -> None:
+        # Team decision (2026-08-05): the crop_context anketa sends NO
+        # chat.question at all — the question reaches the farmer as voice +
+        # llm.token subtitles only. Clients clear the button bar on
+        # chat.state{phase: "crop_context"} instead.
+        if step_id == "crop_context":
+            return
         step = STEPS[step_id]
         if step_id == "crop":
             options = await self._crop_question_options()
@@ -1398,6 +1403,10 @@ class ChatGuide:
         )
 
     async def _emit_question(self, step_id: str) -> None:
+        if step_id == "crop_context":
+            # No WS event AND no duplicate caption row: the spoken question is
+            # recorded anyway as a "rais" turn by the transcript recorder.
+            return
         await self._resend_question(step_id)
         self._store_append(role="rais", kind="question", text=self._prompt_for(step_id))
 

@@ -348,13 +348,13 @@ async def test_crop_context_prompt_for_unsaved_crop(store):
     await guide.on_answer("crop", "uuid-pomidor", "Pomidor")  # not in the mock -> crop_context
     assert doc.crop_in_profile is False
     assert guide.pending_step() == "crop_context"
-    assert rec.sent[-2]["phase"] == "crop_context"
-    question = rec.last("chat.question")
-    assert question["step_id"] == "crop_context"
-    assert question["kind"] == "symptom"
-    # Server-driven anketa: the prompt IS the first fixed question, buttons off.
-    assert question["prompt"] == "Qaysi viloyat va tumandasiz?"
-    assert question["options"] == []
+    assert rec.sent[-1]["type"] == "chat.state"
+    assert rec.sent[-1]["phase"] == "crop_context"
+    # Team decision: the anketa emits NO chat.question — voice/subtitles only.
+    assert not [
+        q for q in rec.sent
+        if q.get("type") == "chat.question" and q.get("step_id") == "crop_context"
+    ]
     prompt = rec.spoken[-1]
     assert "[SAVOL step=crop_context]" in prompt
     # The model is told to voice ONLY the current question — the other three
@@ -421,10 +421,9 @@ async def test_on_answer_full_happy_path_disease_pest_with_photo_skip(store):
     # "Pomidor" is not in the (mock) Growz profile -> crop routes DIRECTLY
     # into the §1.3 crop_context phase (BEFORE plant_part).
     assert doc.crop_in_profile is False
-    assert rec.sent_types()[-2:] == ["chat.state", "chat.question"]
-    assert rec.sent[-2]["phase"] == "crop_context"
-    assert rec.last("chat.question")["step_id"] == "crop_context"
-    assert rec.last("chat.question")["kind"] == "symptom"
+    assert rec.sent_types()[-2:] == ["chat.step", "chat.state"]
+    assert rec.sent[-1]["phase"] == "crop_context"
+    # anketa chat.question yubormaydi — savol faqat ovozda
     assert rec.spoken[-1].startswith("[TIZIM] Fermer tugma orqali «Pomidor»")
     assert "[SAVOL step=crop_context]" in rec.spoken[-1]
 
@@ -1213,15 +1212,12 @@ async def test_start_resumes_at_crop_context_step_speaks_CC_A(store):
     _disease_pest_at_crop_context(doc)
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.sent_types() == ["chat.state", "chat.question"]
+    # Anketa: chat.state keladi, lekin chat.question YOʻQ — savol ovozda.
+    assert rec.sent_types() == ["chat.state"]
     assert rec.sent[0]["phase"] == "crop_context"
-    question = rec.last("chat.question")
-    assert question["step_id"] == "crop_context"
-    assert question["kind"] == "symptom"
-    # BUG 2: hidden until the chip-reveal threshold (resets on resume).
-    assert question["options"] == []
     assert len(rec.spoken) == 1
     assert rec.spoken[0].startswith("[TIZIM][SAVOL step=crop_context]")
+    assert "Qaysi viloyat va tumandasiz?" in rec.spoken[0]
 
 
 async def test_to_symptom_tool_advances_to_plant_part_step(store):
@@ -1314,17 +1310,14 @@ async def test_crop_context_anketa_completes_after_four_answers(store):
     guide.note_farmer_turn("Toshkent, Yangiyoʻl")
     await _drain_background_tasks()
     assert doc.crop_context_answers == {"region": "Toshkent, Yangiyoʻl"}
-    assert rec.last("chat.question")["prompt"] == "Ekin qachon ekilgan?"
+    assert "Ekin qachon ekilgan?" in rec.spoken[-1]
     assert doc.crop_context_done is False
 
     guide.note_farmer_turn("10 kun oldin")
     await _drain_background_tasks()
     guide.note_farmer_turn("Usmirlik fazasida")
     await _drain_background_tasks()
-    assert (
-        rec.last("chat.question")["prompt"]
-        == "Oxirgi agrotexnik ishlar qachon va qanday boʻlgan?"
-    )
+    assert "Oxirgi agrotexnik ishlar qachon va qanday boʻlgan?" in rec.spoken[-1]
     guide.note_farmer_turn("Kecha sugʻordim")
     await _drain_background_tasks()
 
@@ -1364,27 +1357,21 @@ async def test_crop_context_anketa_advances_question_by_question(store):
     _disease_pest_at_crop_context(doc)
     guide, rec = _guide(store, doc)
     await guide.start()
-    assert rec.last("chat.question")["prompt"] == "Qaysi viloyat va tumandasiz?"
-    assert rec.last("chat.question")["options"] == []
+    assert "Qaysi viloyat va tumandasiz?" in rec.spoken[-1]
 
     guide.note_farmer_turn("   ")  # a blank turn answers nothing
     await _drain_background_tasks()
     assert doc.crop_context_answers == {}
-    ccq = [
-        p for p in rec.sent
-        if p["type"] == "chat.question" and p["step_id"] == "crop_context"
-    ]
-    assert len(ccq) == 1
+    assert len(rec.spoken) == 1  # keyingi savol aytilmadi
 
     guide.note_farmer_turn("Yangiyoʻl")
     await _drain_background_tasks()
-    ccq = [
+    # chat.question anketa uchun HECH QACHON chiqmaydi…
+    assert not [
         p for p in rec.sent
         if p["type"] == "chat.question" and p["step_id"] == "crop_context"
     ]
-    assert len(ccq) == 2
-    assert ccq[-1]["prompt"] == "Ekin qachon ekilgan?"
-    assert ccq[-1]["options"] == []
+    # …keyingi savol faqat ovoz orqali.
     assert "Ekin qachon ekilgan?" in rec.spoken[-1]
     assert rec.spoken[-1].startswith("[TIZIM] Javob qabul qilindi.")
     assert doc.crop_context_done is False  # the phase itself did not advance

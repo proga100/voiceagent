@@ -127,6 +127,7 @@
       <div class="card">
         <h2>Текущий шаг</h2>
         <div id="qbox"><p class="hint">Подключитесь — сюда придёт первый вопрос с вариантами.</p></div>
+        <div id="subs" class="hint" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:none"></div>
       </div>
 
       <div class="card">
@@ -183,6 +184,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let sock = null, audioBytes = 0, events = 0, ac = null, playAt = 0;
+let subsBuf = '', subsDone = false;   // agent nutqining jonli subtitri
 
 /** Нормализуем то, что ввели в поле WS URL: люди вставляют сюда адрес самой
     страницы (http://…/voice/tester) — чиним схему http→ws, хвост /tester
@@ -284,8 +286,11 @@ function send(obj) {
 /* ---- вопрос с кнопками ---- */
 function renderQuestion(m) {
   const box = $('qbox');
-  box.innerHTML = `<div class="sid">${m.step_id} · kind: ${m.kind}</div>
-                   <div class="prompt">${m.prompt}</div>`;
+  // kind=symptom: savolni model OVOZ bilan aytadi va u subtitrda koʻrinadi —
+  // sarlavhada takrorlamaymiz (duplikatga qarshi, ilova ham shunday qilsin).
+  const showPrompt = m.kind !== 'symptom';
+  box.innerHTML = `<div class="sid">${m.step_id} · kind: ${m.kind}</div>`
+    + (showPrompt ? `<div class="prompt">${m.prompt}</div>` : '');
   // crop_picker: «Ha»/«Yoʻq» теперь приходят С СЕРВЕРА как обычные options —
   // особые id (saved_crops / open_crop_picker) разбирает mkBtn.
   if (!m.options || !m.options.length) {
@@ -599,9 +604,23 @@ $('bConn').onclick = () => {
     }
     const m = JSON.parse(e.data);
     log('in', m.type, m);
+    // Jonli subtitr: model nima deyayotgani shu yerda oqib boradi — savol
+    // matni sarlavhada TAKRORLANMAYDI, u shu subtitrning oʻzi.
+    if (m.type === 'llm.token') {
+      if (subsDone) { subsBuf = ''; subsDone = false; }
+      subsBuf += m.token;
+      $('subs').style.display = '';
+      $('subs').textContent = '🗣 ' + subsBuf;
+    }
+    if (m.type === 'tts.finished') subsDone = true;
     if (m.type === 'chat.question') renderQuestion(m);
     if (m.type === 'chat.state' && m.phase === 'consult')
       $('qbox').innerHTML = '<p class="hint">Опрос завершён — фаза consult, свободная консультация.</p>';
+    if (m.type === 'chat.state' && m.phase === 'crop_context')
+      // Anketa uchun chat.question KELMAYDI — savol ovoz + subtitrda.
+      $('qbox').innerHTML = '<div class="sid">crop_context · anketa</div>'
+        + '<p class="hint">Savol ovozda va 🗣 subtitrda. Javobni 🎤 mikrofon '
+        + 'orqali gapiring yoki «Свободная реплика» maydoniga yozib yuboring.</p>';
     if (m.type === 'photo.received') {
       if (pendingPhoto && (!m.photo_id || m.photo_id === pendingPhoto.id)) {
         clearTimeout(pendingPhoto.t); pendingPhoto = null;
