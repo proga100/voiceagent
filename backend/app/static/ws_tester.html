@@ -480,7 +480,7 @@ $('photoFile').onchange = async ev => {
     const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
     // Протокол 2026-08-05: байты уходят по REST (POST /photos -> URL),
     // по сокету едет только URL в поле value.
-    const base = httpBase(wsUrlNorm($('url').value));
+    const base = httpBase(wsUrlNorm());
     const photoId = uuid4();
     const restBody = {user_id: $('uid').value, chat_id: $('cid').value.trim(),
                       photo_id: photoId, mime: 'image/jpeg', data: b64};
