@@ -603,7 +603,9 @@ class GeminiLiveSession:
                     it = getattr(sc, "input_transcription", None)
                     if it is not None and getattr(it, "text", None):
                         self._mem_in.append(it.text)
-                        await self._send_json({"type": "stt.partial", "text": it.text})
+                        await self._send_json(
+                            {"type": "stt.partial", "value": it.text}
+                        )
                     ot = getattr(sc, "output_transcription", None)
                     if ot is not None and getattr(ot, "text", None):
                         self._mem_out.append(ot.text)

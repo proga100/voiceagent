@@ -78,7 +78,7 @@ class CameraCancelled(BaseModel):
 
 class STTPartial(BaseModel):
     type: Literal["stt.partial"] = "stt.partial"
-    text: str
+    value: str
 
 
 class STTFinal(BaseModel):

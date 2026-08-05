@@ -153,7 +153,7 @@ class StreamingSession:
             if t.kind == "partial":
                 if self._latency and not self._latency.has("t2_stt_first_partial"):
                     self._latency.mark("t2_stt_first_partial")
-                await self._send_json({"type": "stt.partial", "text": t.text})
+                await self._send_json({"type": "stt.partial", "value": t.text})
             elif t.kind == "final":
                 # STT emits both `final` and `final_refinement` for one utterance;
                 # ignore the refinement of the utterance we're already answering so

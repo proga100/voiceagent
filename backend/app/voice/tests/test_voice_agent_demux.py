@@ -182,7 +182,7 @@ async def test_session_without_memory_hooks_unaffected(monkeypatch, tmp_path):
 
 async def test_text_input_dispatches_trimmed_and_capped(monkeypatch):
     session = await _run(monkeypatch, [
-        {"type": "text.input", "text": "  Salom, pomidorim kasal  "},
+        {"type": "text.input", "value": "  Salom, pomidorim kasal  "},
     ])
     assert ("user_text", "Salom, pomidorim kasal") in session.calls
 
@@ -255,7 +255,7 @@ async def test_enrichment_failure_never_blocks_start(monkeypatch):
 
 async def test_text_input_empty_ignored(monkeypatch):
     session = await _run(monkeypatch, [
-        {"type": "text.input", "text": "   "},
+        {"type": "text.input", "value": "   "},
         {"type": "text.input"},
     ])
     assert not [c for c in session.calls if c[0] == "user_text"]
@@ -263,7 +263,7 @@ async def test_text_input_empty_ignored(monkeypatch):
 
 async def test_text_input_long_message_truncated(monkeypatch):
     session = await _run(monkeypatch, [
-        {"type": "text.input", "text": "x" * 900},
+        {"type": "text.input", "value": "x" * 900},
     ])
     sent = [c for c in session.calls if c[0] == "user_text"]
     assert sent and len(sent[0][1]) == 500

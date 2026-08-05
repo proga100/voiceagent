@@ -310,7 +310,7 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
             elif etype == "text.input" and hasattr(session, "on_user_text"):
                 # Typed farmer message — the quiet-environment / noisy-field
                 # fallback for voice. Answered with voice+text as usual.
-                txt = (event.get("text") or "").strip()
+                txt = (event.get("value") or "").strip()
                 if txt and started:
                     await session.on_user_text(txt[:500])
             elif etype == "chat.answer" and chat_guide is not None:

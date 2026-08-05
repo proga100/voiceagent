@@ -170,6 +170,28 @@
 const $ = id => document.getElementById(id);
 let sock = null, audioBytes = 0, events = 0, ac = null, playAt = 0;
 
+/** Нормализуем то, что ввели в поле WS URL: люди вставляют сюда адрес самой
+    страницы (http://…/voice/tester) — чиним схему http→ws, хвост /tester
+    меняем на /ws/voice, а если хвоста нет вовсе — добавляем. Исправленное
+    значение возвращаем в поле, чтобы было видно, что ушло на самом деле. */
+function wsUrlNorm() {
+  try {
+    let v = $('ws').value.trim()
+      .replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    const u = new URL(v);
+    u.pathname = u.pathname.replace(/\/tester\/?$/, '/ws/voice');
+    if (!u.pathname.endsWith('/ws/voice'))
+      u.pathname = u.pathname.replace(/\/$/, '') + '/ws/voice';
+    u.search = '';
+    v = u.toString();
+    $('ws').value = v;
+    return v;
+  } catch (e) {
+    log('err', 'адрес', 'не разбирается как URL: ' + $('ws').value);
+    return $('ws').value;
+  }
+}
+
 /** REST-база выводится из WS-адреса: отбрасываем только хвост /ws/voice,
     префикс монтирования (/voice у Growz) обязан сохраниться. */
 function httpBase(ws) {
@@ -434,14 +456,23 @@ $('photoFile').onchange = async ev => {
 
 /* ---- REST: создать чат ---- */
 $('bChat').onclick = async () => {
-  const base = httpBase($('ws').value);
+  const base = httpBase(wsUrlNorm());
   try {
     log('out', 'POST ' + base + '/chats', {user_id: $('uid').value});
     const r = await fetch(base + '/chats', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({user_id: $('uid').value})
     });
-    const j = await r.json();
+    const body = await r.text();
+    if (!r.ok) {
+      log('err', 'ошибка REST', 'HTTP ' + r.status + ' от ' + base + '/chats: ' + body.slice(0, 200));
+      return;
+    }
+    const j = JSON.parse(body);
+    if (!j.data || !j.data.id) {
+      log('err', 'ошибка REST', 'ответ без data.id: ' + body.slice(0, 200));
+      return;
+    }
     $('cid').value = j.data.id;
     log('in', 'чат создан', j.data);
   } catch (e) {
@@ -452,7 +483,7 @@ $('bChat').onclick = async () => {
 /* ---- WebSocket ---- */
 $('bConn').onclick = () => {
   if (sock) sock.close();
-  const url = $('ws').value + '?token=' + encodeURIComponent($('tok').value);
+  const url = wsUrlNorm() + '?token=' + encodeURIComponent($('tok').value);
   setStatus('подключаемся…');
   log('out', 'CONNECT', url);
   sock = new WebSocket(url);
@@ -509,7 +540,7 @@ $('bConn').onclick = () => {
 };
 
 $('bStop').onclick = () => sock && sock.close(1000);
-$('bTxt').onclick  = () => send({type: 'text.input', text: $('txt').value});
+$('bTxt').onclick  = () => send({type: 'text.input', value: $('txt').value});
 $('bInt').onclick  = () => { send({type: 'user.interrupt'}); flushPlayback(); };
 $('bClr').onclick  = () => { $('log').innerHTML = ''; events = 0; $('nEv').textContent = '0'; };
 $('bCopy').onclick = () => {

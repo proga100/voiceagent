@@ -30,7 +30,7 @@ sealed class ServerEvent {
     final type = json['type'] as String?;
     switch (type) {
       case 'stt.partial':
-        return SttPartial(text: _str(json['text']));
+        return SttPartial(text: _str(json['value']));
       case 'llm.token':
         return LlmToken(token: _str(json['token']));
       case 'tts.started':
@@ -550,7 +550,7 @@ class TextInputRequest extends ClientEvent {
   final String text;
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'text.input', 'text': text};
+  Map<String, dynamic> toJson() => {'type': 'text.input', 'value': text};
 }
 
 /// Phase 5: uploads a captured photo (base64) for a plant part. Defined now so

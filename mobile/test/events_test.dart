@@ -3,8 +3,8 @@ import 'package:plant_doctor/core/protocol/events.dart';
 
 void main() {
   group('ServerEvent.fromJson — every server event', () {
-    test('stt.partial', () {
-      final e = ServerEvent.fromJson({'type': 'stt.partial', 'text': 'salom'});
+    test('stt.partial carries value', () {
+      final e = ServerEvent.fromJson({'type': 'stt.partial', 'value': 'salom'});
       expect(e, isA<SttPartial>());
       expect((e as SttPartial).text, 'salom');
     });
@@ -603,10 +603,10 @@ void main() {
       expect((e as SessionExpired).message, 'Suhbat vaqti tugadi');
     });
 
-    test('text.input carries the typed message', () {
+    test('text.input carries the typed message as value', () {
       expect(
         const TextInputRequest(text: 'Salom, pomidorim kasal').toJson(),
-        {'type': 'text.input', 'text': 'Salom, pomidorim kasal'},
+        {'type': 'text.input', 'value': 'Salom, pomidorim kasal'},
       );
     });
 
