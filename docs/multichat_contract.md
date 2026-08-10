@@ -397,6 +397,27 @@ phase-specific corrective note (§4.6 D-SY / D-G), not an exception.
 
 ---
 
+### 1.7 `audio.mute` / `audio.unmute` (client → server) — NEW
+
+Toggles the agent's spoken voice without ending the session.
+
+* Shape: `{"type": "audio.mute"}` / `{"type": "audio.unmute"}` — no other fields.
+* Server: sets a per-session `_muted` flag (`GeminiLiveSession.set_muted`).
+  While muted, ALL outbound audio frames are dropped — both Gemini native
+  audio and the Azure-voice path — so the client receives no PCM. Text and
+  transcription (`stt.partial`, `llm.token`, `chat.*`, `tts.started/finished`)
+  are UNAFFECTED and keep flowing.
+* The Gemini Live model still generates audio (the response modality is fixed
+  at connect and cannot be switched mid-session); we simply stop forwarding it.
+  So mute/unmute is instant and needs no reconnect — but it does NOT reduce
+  model/token cost.
+* Client (mobile + `ws_tester`): on mute, also flush local playback so any
+  already-buffered audio stops immediately; the mute state is UI-only otherwise.
+* Idempotent: repeated `audio.mute` (or `audio.unmute`) just re-sets the flag.
+  Unknown/duplicate is harmless. State resets to unmuted on a fresh session.
+
+---
+
 ## 2. REST endpoints — UNCHANGED from v1
 
 `GET /chats`, `POST /chats`, `GET /chats/{chat_id}` exactly as v1 §2 (shapes,

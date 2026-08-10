@@ -49,6 +49,20 @@ class UserInterrupt(BaseModel):
     type: Literal["user.interrupt"] = "user.interrupt"
 
 
+class AudioMute(BaseModel):
+    """Mute the agent's spoken voice — the server drops outbound audio frames
+    (Gemini + Azure) while text/transcription keeps flowing. Instant, no
+    reconnect; the model still generates audio, we just stop forwarding it."""
+
+    type: Literal["audio.mute"] = "audio.mute"
+
+
+class AudioUnmute(BaseModel):
+    """Resume the agent's spoken voice."""
+
+    type: Literal["audio.unmute"] = "audio.unmute"
+
+
 class TextInput(BaseModel):
     """A typed farmer message — the quiet/noisy-environment fallback for
     voice. Answered exactly like a spoken turn (voice + text)."""
