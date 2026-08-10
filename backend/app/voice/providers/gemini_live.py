@@ -251,6 +251,10 @@ class GeminiLiveSession:
         self._input_sample_rate = settings.audio_input_sample_rate_hz
         self._voice = settings.gemini_live_voice
         self._azure_mode = False
+        # Agent-voice mute: when True, outbound audio frames (Gemini native AND
+        # Azure) are dropped — the farmer still gets text/transcription. Toggled
+        # by the audio.mute / audio.unmute client events (set_muted).
+        self._muted = False
         self._azure_voice = ""
         self._azure = None  # lazy AzureTTSProvider
         self._chunker = None  # SentenceChunker for per-sentence Azure synthesis
@@ -538,6 +542,13 @@ class GeminiLiveSession:
         # Live handles barge-in server-side from the audio stream; nothing to do.
         await self._send_json({"type": "agent.interrupted"})
 
+    def set_muted(self, muted: bool) -> None:
+        """Toggle agent-voice output. Muted -> outbound audio frames (Gemini +
+        Azure) are dropped; text/transcription is unaffected. The model still
+        generates audio (Live modality is fixed at connect); we just stop
+        forwarding it, so mute/unmute is instant and needs no reconnect."""
+        self._muted = bool(muted)
+
     @staticmethod
     def _usage_payload(um) -> dict:
         """Flatten Gemini Live ``usage_metadata`` into a ``usage`` event the client
@@ -594,7 +605,7 @@ class GeminiLiveSession:
                     data = getattr(response, "data", None)
                     # In Azure mode we discard Gemini's own audio — Azure voices
                     # the reply instead (from the output transcription below).
-                    if data and not self._azure_mode:
+                    if data and not self._azure_mode and not self._muted:
                         await self._send_bytes(data)
                     # Token usage is intentionally NOT forwarded to the client
                     # (team decision 2026-08-05): it's server-side telemetry,
@@ -806,6 +817,8 @@ class GeminiLiveSession:
                     ):
                         if gen != self._gen:  # barge-in mid-sentence
                             break
+                        if self._muted:  # agent voice muted — drop the frame
+                            continue
                         await self._send_bytes(frame)
                     self._azure_failures = 0  # a good sentence clears the streak
                 except Exception as exc:  # noqa: BLE001

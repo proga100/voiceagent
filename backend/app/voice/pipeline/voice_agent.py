@@ -416,6 +416,10 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                         asyncio.create_task(run_dev_autopilot(session))
             elif etype == "user.interrupt":
                 await session.on_user_interrupt()
+            elif etype in ("audio.mute", "audio.unmute") and hasattr(session, "set_muted"):
+                # Toggle the agent's spoken voice without dropping the session:
+                # the text/transcription keeps flowing, only audio is silenced.
+                session.set_muted(etype == "audio.mute")
             elif etype == "text.input" and hasattr(session, "on_user_text"):
                 # Typed farmer message — the quiet-environment / noisy-field
                 # fallback for voice. Answered with voice+text as usual.

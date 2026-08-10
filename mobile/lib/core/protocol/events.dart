@@ -453,6 +453,22 @@ class UserInterrupt extends ClientEvent {
   Map<String, dynamic> toJson() => {'type': 'user.interrupt'};
 }
 
+/// Mute the agent's spoken voice (server drops outbound audio; text stays).
+class AudioMute extends ClientEvent {
+  const AudioMute();
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'audio.mute'};
+}
+
+/// Resume the agent's spoken voice.
+class AudioUnmute extends ClientEvent {
+  const AudioUnmute();
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'audio.unmute'};
+}
+
 /// A typed farmer message — the quiet/noisy-environment fallback for voice.
 /// The agent answers with voice + text exactly like a spoken turn.
 class TextInputRequest extends ClientEvent {

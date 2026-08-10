@@ -44,6 +44,7 @@ class SessionSnapshot {
     this.state = SessionState.disconnected,
     this.micLevel = 0,
     this.pttHeld = false,
+    this.agentMuted = false,
     this.errorMessage,
   });
 
@@ -51,6 +52,10 @@ class SessionSnapshot {
 
   /// True while the farmer holds the push-to-talk button (mic streaming).
   final bool pttHeld;
+
+  /// True when the agent's spoken voice is muted (text still flows). Toggled by
+  /// the mute control; drives the audio.mute / audio.unmute events.
+  final bool agentMuted;
 
 
   /// Latest Azure TTS character count, for the debug row.
@@ -65,12 +70,14 @@ class SessionSnapshot {
     SessionState? state,
     double? micLevel,
     bool? pttHeld,
+    bool? agentMuted,
     String? errorMessage,
     bool clearError = false,
   }) => SessionSnapshot(
     state: state ?? this.state,
     micLevel: micLevel ?? this.micLevel,
     pttHeld: pttHeld ?? this.pttHeld,
+    agentMuted: agentMuted ?? this.agentMuted,
     errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
   );
 }
@@ -273,6 +280,16 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
     _socket?.send(const UserInterrupt());
     _flushPlayback();
     ref.read(transcriptProvider.notifier).onAgentDone();
+  }
+
+  /// Mute / unmute the agent's spoken voice. The session stays live and the
+  /// text/transcription keeps flowing — only audio is silenced server-side. On
+  /// mute we also flush local playback so any buffered audio stops instantly.
+  void toggleAgentMute() {
+    final muted = !state.agentMuted;
+    _socket?.send(muted ? const AudioMute() : const AudioUnmute());
+    if (muted) _flushPlayback();
+    state = state.copyWith(agentMuted: muted);
   }
 
   /// Sends an arbitrary client event (Phase 5 camera: `photo.quality`,

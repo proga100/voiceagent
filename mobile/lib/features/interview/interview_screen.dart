@@ -218,6 +218,12 @@ class _InterviewScreenState extends ConsumerState<InterviewScreen> {
                           onToggleText: live
                               ? () => setState(() => _textMode = !_textMode)
                               : null,
+                          muted: session.agentMuted,
+                          onToggleMute: live
+                              ? () => ref
+                                    .read(voiceSessionProvider.notifier)
+                                    .toggleAgentMute()
+                              : null,
                           onPtt: (held) => ref
                               .read(voiceSessionProvider.notifier)
                               .setPttHeld(held),
@@ -563,6 +569,8 @@ class _Controls extends StatelessWidget {
     this.onCamera,
     this.onToggleText,
     this.textMode = false,
+    this.onToggleMute,
+    this.muted = false,
   });
 
   final bool live;
@@ -571,6 +579,12 @@ class _Controls extends StatelessWidget {
   final ValueChanged<bool> onPtt;
   final VoidCallback onStart;
   final VoidCallback onEnd;
+
+  /// Mute/unmute the agent's spoken voice. Null while offline (disabled).
+  final VoidCallback? onToggleMute;
+
+  /// Whether the agent voice is currently muted (highlights the toggle).
+  final bool muted;
 
   /// Opens the guided camera. Null while the session is offline (the photo
   /// needs a live socket to upload), which renders the button disabled.
@@ -608,6 +622,16 @@ class _Controls extends StatelessWidget {
             tooltip: 'Yozib yuborish',
             isSelected: textMode,
             icon: Icon(textMode ? Icons.keyboard_hide : Icons.keyboard),
+          ),
+          const SizedBox(width: 8),
+          // Mute/unmute Rais's voice — text keeps flowing, only audio is off.
+          IconButton.filledTonal(
+            onPressed: onToggleMute,
+            iconSize: 24,
+            padding: const EdgeInsets.all(14),
+            tooltip: muted ? 'Ovozni yoqish' : 'Ovozni oʻchirish',
+            isSelected: muted,
+            icon: Icon(muted ? Icons.volume_off : Icons.volume_up),
           ),
           const SizedBox(width: 8),
           Expanded(
