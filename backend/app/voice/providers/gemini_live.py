@@ -880,11 +880,25 @@ class GeminiLiveSession:
                 ),
             })
         elif name == "finalize_case":
+            # HARD photo requirement (disease/pest + weed): NEVER diagnose
+            # without at least one accepted photo — even when the farmer
+            # pressures the model verbally ("tashxis qoʻying"). Ack with a
+            # need-photo note so the model asks for a photo instead; do NOT
+            # send diagnosis.started and do NOT spawn the diagnosis.
+            if not self._photos:
+                await self._ack_tool(fc, {
+                    "status": "need_photo",
+                    "note": (
+                        "Rasm hali yoʻq. Tashxis uchun kamida bitta rasm "
+                        "MAJBURIY. Fermerga muloyim ayt: kasallangan qismning "
+                        "rasmini yuborsin; rasmsiz tashxis qoʻyma."
+                    ),
+                })
             # Double-diagnosis guard (both directions): if a case is already
             # running — e.g. the farmer tapped «Tayyor» (finalize_from_guide)
             # a beat before the model emitted finalize_case — ack but do NOT
             # spawn a second diagnosis.
-            if self._case_task is not None and not self._case_task.done():
+            elif self._case_task is not None and not self._case_task.done():
                 await self._ack_tool(fc, {
                     "status": "processing",
                     "note": "Tahlil allaqachon boshlangan, kutib turing.",
@@ -915,6 +929,10 @@ class GeminiLiveSession:
         No-ops when a case is already running (double-diagnosis guard) so a
         guide trigger can never race a model-driven finalize_case."""
         if self._case_task is not None and not self._case_task.done():
+            return
+        if not self._photos:
+            # Defensive: the guide only reaches here with >=1 photo, but a
+            # diagnosis without an image is never allowed (photo is mandatory).
             return
         case_id = uuid.uuid4().hex
         await self._send_json({"type": "diagnosis.started", "case_id": case_id})

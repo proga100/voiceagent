@@ -506,6 +506,29 @@ async def test_model_finalize_case_runs_when_no_case_task(monkeypatch):
     await session._case_task
 
 
+async def test_model_finalize_case_blocked_without_photo(monkeypatch):
+    # HARD photo requirement: a voice-driven finalize_case with NO photo must
+    # NOT diagnose — no diagnosis.started, no case task; the ack asks for a photo.
+    session, sent, *_ = _make_session(monkeypatch)
+    session._photos = []  # farmer pressured for a diagnosis without any image
+    assert session._case_task is None
+
+    await session._handle_tool_call(
+        _FakeFC("finalize_case", {"summary": {"crop": "bugʻdoy"}})
+    )
+    assert not any(p["type"] == "diagnosis.started" for p in sent)
+    assert session._case_task is None
+
+
+async def test_finalize_from_guide_blocked_without_photo(monkeypatch):
+    # The deterministic guide trigger also never diagnoses with 0 photos.
+    session, sent, *_ = _make_session(monkeypatch)
+    session._photos = []
+    await session.finalize_from_guide({"crop": "pomidor"})
+    assert not any(p["type"] == "diagnosis.started" for p in sent)
+    assert session._case_task is None
+
+
 async def test_finalize_from_guide_runs_when_previous_case_done(monkeypatch):
     session, sent, *_ = _make_session(monkeypatch)
 

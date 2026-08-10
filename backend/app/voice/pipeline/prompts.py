@@ -60,10 +60,12 @@ TOOL_INSTRUCTIONS_UZ = (
     "safar 1-2 ta qisqa jumla bilan. Ekin, belgilar, boshlanish/tarqalish va miqyos "
     "aniq boʻlsa VA kamida bitta rasm kelgan boʻlsa, finalize_case ni toʻliq summary "
     "bilan chaqir (farmer_language=\"uz\").\n"
-    "MUHIM: fermer tashxisni aniq soʻrasa (masalan «tashxis qoʻying», «nima ekan», "
-    "«xoʻsh, natija?»), rasm sifatidan yoki toʻliq boʻlmagan maʼlumotdan qatʼi nazar, "
-    "DARHOL finalize_case ni mavjud maʼlumotlar bilan chaqir — fermerni rasm "
-    "aylanasida ushlab turma.\n"
+    "MUHIM: kasallik/zararkunanda va begona oʻt tashxisi uchun RASM MAJBURIY. "
+    "Kamida bitta rasm kelmaguncha finalize_case ni HECH QACHON chaqirma. Fermer "
+    "rasmsiz tashxis soʻrasa ham (masalan «tashxis qoʻying», «nima ekan», «xoʻsh, "
+    "natija?»), rasmsiz tashxis qoʻyib boʻlmasligini muloyim tushuntir va "
+    "kasallangan qismning rasmini soʻra (kerak boʻlsa request_photo ni chaqir). "
+    "Rasmsiz tashxis YOʻQ.\n"
     "JSON yoki funksiya nomlarini OVOZ CHIQARIB OʻQIMA — tabiiy gapir."
 )
 
