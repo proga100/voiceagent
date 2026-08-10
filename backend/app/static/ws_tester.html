@@ -122,6 +122,7 @@
         <div style="margin-top:12px">
           <button id="bConn" class="primary">Подключиться</button>
           <button id="bStop" class="danger" disabled>Отключиться</button>
+          <button id="bMute" disabled>🔊 Звук вкл</button>
         </div>
         <div class="status" style="margin-top:14px">
           <span class="dot" id="dot"></span><span id="st">не подключено</span>
@@ -202,6 +203,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let sock = null, audioBytes = 0, events = 0, ac = null, playAt = 0;
+let muted = false;                 // agent-voice mute (audio.mute/unmute)
 let botBuf = '', botDone = false;   // agent nutqi (llm.token)
 let farmerText = '';               // fermer nutqi (stt.partial)
 
@@ -621,7 +623,7 @@ $('bConn').onclick = () => {
   sock.onopen = () => {
     setStatus('подключено', 'on');
     $('bStop').disabled = false; $('bTxt').disabled = false; $('bInt').disabled = false;
-    $('bPtt').disabled = false; $('bPhoto').disabled = false;
+    $('bPtt').disabled = false; $('bPhoto').disabled = false; $('bMute').disabled = false;
     photoCount = 0; $('photoCnt').textContent = '';
     // sample_rate / voice — серверные настройки (.env), клиент их не шлёт.
     const start = {type: 'chat.start', language: 'uz-UZ',
@@ -692,7 +694,8 @@ $('bConn').onclick = () => {
   sock.onclose = ev => {
     setStatus('закрыто, код ' + ev.code, ev.code === 1000 ? '' : 'err');
     $('bStop').disabled = true; $('bTxt').disabled = true; $('bInt').disabled = true;
-    $('bPtt').disabled = true; $('bPhoto').disabled = true;
+    $('bPtt').disabled = true; $('bPhoto').disabled = true; $('bMute').disabled = true;
+    muted = false; $('bMute').textContent = '🔊 Звук вкл'; $('bMute').classList.remove('danger');
     ptt = false; $('bPtt').classList.remove('rec');
     $('bPtt').textContent = '🎤 Удерживайте и говорите';
     if (tailTimer) { clearInterval(tailTimer); tailTimer = null; }
@@ -704,6 +707,13 @@ $('bConn').onclick = () => {
 $('bStop').onclick = () => sock && sock.close(1000);
 $('bTxt').onclick  = () => send({type: 'text.input', value: $('txt').value});
 $('bInt').onclick  = () => { send({type: 'user.interrupt'}); flushPlayback(); };
+$('bMute').onclick = () => {
+  muted = !muted;
+  send({type: muted ? 'audio.mute' : 'audio.unmute'});
+  if (muted) flushPlayback();                 // stop buffered audio instantly
+  $('bMute').textContent = muted ? '🔇 Звук выкл' : '🔊 Звук вкл';
+  $('bMute').classList.toggle('danger', muted);
+};
 $('bClr').onclick  = () => {
   $('log').innerHTML = ''; $('logOut').innerHTML = ''; $('logIn').innerHTML = '';
   events = 0; $('nEv').textContent = '0';
