@@ -457,6 +457,10 @@ class ChatGuide:
         # non-spoken user turn). Used to auto-load the farmer's profile when the
         # crop is committed. None in tests / when the provider can't inject.
         self._inject_context = inject_context
+        # Script switch: set True (from chat.start language="uz-Cyrl") to
+        # transliterate the client-facing labels/prompts to Uzbek Cyrillic at
+        # emission. The frozen Latin UZ table stays the source of truth.
+        self.cyrillic = False
         self.degraded = False
         # In-memory only (contract §3.2 has no persisted photo_id field —
         # photos themselves are never stored). Reset every session.
@@ -1347,6 +1351,15 @@ class ChatGuide:
                 return pend[1]
         return STEPS[step_id]["prompt"]
 
+    def _loc(self, text: str) -> str:
+        """Client-facing label localisation: transliterate to Uzbek Cyrillic
+        when the session opened as ``uz-Cyrl``, otherwise pass through."""
+        if not text or not self.cyrillic:
+            return text
+        from app.voice.chat.translit import to_uz_cyrillic
+
+        return to_uz_cyrillic(text)
+
     async def _resend_question(self, step_id: str) -> None:
         # Team decision (2026-08-05): the crop_context anketa sends NO
         # chat.question at all — the question reaches the farmer as voice +
@@ -1379,9 +1392,11 @@ class ChatGuide:
                 "type": "chat.question",
                 "chat_id": self.doc.id,
                 "step_id": step_id,
-                "prompt": self._prompt_for(step_id),
+                "prompt": self._loc(self._prompt_for(step_id)),
                 "kind": step["kind"],
-                "options": [{"id": oid, "label": label} for oid, label in options],
+                "options": [
+                    {"id": oid, "label": self._loc(label)} for oid, label in options
+                ],
             }
         )
 
@@ -1421,7 +1436,7 @@ class ChatGuide:
         if value:
             payload["value"] = value
         if label:
-            payload["label"] = label
+            payload["label"] = self._loc(label)
         picked = {k: v for k, v in self._selections().items() if v}
         if picked:
             payload["selections"] = picked

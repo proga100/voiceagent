@@ -70,6 +70,18 @@ TOOL_INSTRUCTIONS_UZ = (
 )
 
 
+# Reply-script switch: appended to the system prompt (via set_memory) when the
+# client opens the session with language="uz-Cyrl". Only the AGENT'S free
+# speech/text switches to Cyrillic — the on-screen button labels (frozen UZ
+# table) stay Latin.
+CYRILLIC_REPLY_DIRECTIVE = (
+    "МУҲИМ (ёзув): фермерга БАРЧА жавобларингни — ҳам оғзаки нутқ, ҳам матн — "
+    "фақат ЎЗБЕК КИРИЛЛ алифбосида бер (масалан: «Ассалому алайкум, мен Раис "
+    "агрономман»). Лотин ёзувида ёзма. Тил ўзбекча бўлиб қолаверади, фақат "
+    "ёзув кириллча."
+)
+
+
 def load_system_prompt(settings: Settings) -> str:
     """Voice-agent system prompt: the tunable file if present, else the constant.
 

@@ -190,6 +190,30 @@ async def test_start_new_chat_emits_state_question_and_script_a(store):
     assert doc.messages[-1].role == "rais" and doc.messages[-1].kind == "question"
 
 
+async def test_cyrillic_flag_transliterates_question_prompt_and_labels(store):
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    guide.cyrillic = True
+    await guide.start()
+    question = rec.last("chat.question")
+    assert question["prompt"] == "Нима бўйича маслаҳат керак?"
+    assert question["options"] == [
+        {"id": "disease_pest", "label": "Касалликлар ва зараркунандалар"},
+        {"id": "weed", "label": "Бегона ўт"},
+        {"id": "general", "label": "Умумий савол бериш"},
+    ]
+
+
+async def test_latin_default_leaves_question_labels_in_latin(store):
+    doc = new_chat_doc(DEV)
+    guide, rec = _guide(store, doc)
+    # cyrillic defaults to False -> the frozen Latin table is emitted verbatim.
+    await guide.start()
+    question = rec.last("chat.question")
+    assert question["prompt"] == "Nima boʻyicha maslahat kerak?"
+    assert question["options"][0]["label"] == "Kasalliklar va zararkunandalar"
+
+
 async def test_start_resumed_finished_chat_emits_consult_and_script_f(store):
     doc = new_chat_doc(DEV)
     doc.finished = True

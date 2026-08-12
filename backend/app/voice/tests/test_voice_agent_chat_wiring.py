@@ -225,6 +225,55 @@ async def test_resumed_finished_chat_skips_guide_and_records_consult_turns(
     assert saved.messages[-1].text == "Bargi sarg'ayib qoldi"
 
 
+async def test_language_uz_cyrl_appends_cyrillic_reply_directive(monkeypatch, settings):
+    from app.voice.pipeline.prompts import CYRILLIC_REPLY_DIRECTIVE
+
+    store = ChatStore(settings)
+    doc = store.create(DEV)
+    store.save(doc)
+    session = _FakeChatSession()
+    monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
+
+    ws = _FakeWebSocket([
+        _text_frame({
+            "type": "chat.start", "user_id": DEV, "chat_id": doc.id,
+            "language": "uz-Cyrl",
+        }),
+    ])
+    await voice_agent.run_voice_agent(ws, settings, "t")
+
+    memories = [c[1] for c in session.calls if c[0] == "set_memory"]
+    assert any(m == CYRILLIC_REPLY_DIRECTIVE for m in memories)
+    # ...and the on-screen button labels/prompt are transliterated too.
+    questions = [p for p in ws.sent_json if p["type"] == "chat.question"]
+    assert questions and questions[0]["prompt"] == "Нима бўйича маслаҳат керак?"
+    assert questions[0]["options"][0]["label"] == "Касалликлар ва зараркунандалар"
+
+
+async def test_language_uz_latn_omits_cyrillic_directive(monkeypatch, settings):
+    from app.voice.pipeline.prompts import CYRILLIC_REPLY_DIRECTIVE
+
+    store = ChatStore(settings)
+    doc = store.create(DEV)
+    store.save(doc)
+    session = _FakeChatSession()
+    monkeypatch.setattr(voice_agent, "_build_session", lambda ws, s, sid: session)
+
+    ws = _FakeWebSocket([
+        _text_frame({
+            "type": "chat.start", "user_id": DEV, "chat_id": doc.id,
+            "language": "uz-UZ",
+        }),
+    ])
+    await voice_agent.run_voice_agent(ws, settings, "t")
+
+    memories = [c[1] for c in session.calls if c[0] == "set_memory"]
+    assert all(m != CYRILLIC_REPLY_DIRECTIVE for m in memories)
+    # Latin session -> labels stay in the frozen Latin table.
+    questions = [p for p in ws.sent_json if p["type"] == "chat.question"]
+    assert questions and questions[0]["prompt"] == "Nima boʻyicha maslahat kerak?"
+
+
 async def test_unknown_chat_id_is_auto_created(monkeypatch, settings):
     # 2026-08-05 (App <-> Main <-> AI topology): the main backend mints the
     # id — an unknown but well-formed chat_id starts a FRESH chat under it.

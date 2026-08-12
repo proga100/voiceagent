@@ -239,6 +239,16 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     cfg_voice = getattr(settings, "gemini_live_voice", None)
                     if cfg_voice and hasattr(session, "set_voice"):
                         session.set_voice(cfg_voice)
+                    # Reply-script switch (before connect): language="uz-Cyrl"
+                    # -> the agent answers in Uzbek Cyrillic. Only the agent's
+                    # free speech/text switches; button labels stay Latin.
+                    lang = (event.get("language") or "").strip().lower()
+                    is_cyrl = "cyrl" in lang
+                    if is_cyrl and hasattr(session, "set_memory"):
+                        from app.voice.pipeline.prompts import (
+                            CYRILLIC_REPLY_DIRECTIVE,
+                        )
+                        session.set_memory(CYRILLIC_REPLY_DIRECTIVE)
                     # Multichat: resolve chat_id -> stored ChatDoc BEFORE the
                     # rest of the prompt is assembled (the guide policy/history
                     # block and the enrichment crop fallback both need it). Any
@@ -290,6 +300,9 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                                     session, "finalize_from_guide", None
                                 ),
                             )
+                            # uz-Cyrl: transliterate the guided-flow button
+                            # labels/prompts to Cyrillic at emission too.
+                            chat_guide.cyrillic = is_cyrl
                             if not chat_doc.finished:
                                 session.set_tool_extension(
                                     chat_guide.build_tools(), chat_guide.handle_tool
