@@ -141,6 +141,7 @@ role instead of doing cross-cutting work inline:
 | `flutter-mobile` | Flutter client implementation | mobile code + widget/unit tests |
 | `code-reviewer` | diff review: correctness, protocol drift, secrets | after changes, before every commit |
 | `security-reviewer` | auth / photo pipeline / PII / public-repo hygiene | before releases; after touching auth or uploads |
+| `release-manager` | pre-flight audit + post-deploy verification | around every prod deploy (never runs update.sh itself) |
 
 **TDD is the default loop** (see the `tdd` skill): architect plans →
 tdd-tester writes the failing test → specialist implements the minimal green →
@@ -149,5 +150,6 @@ photos, or external URLs changed) → commit. The hooks enforce the loop:
 `run-related-tests.sh` re-runs tests after each edit and
 `block-finish-on-red.sh` refuses to end a session with a red suite.
 
-Skills: `local-dev` (run/debug locally), `tdd` (the loop above), `build-apk`
-(device builds — waits for user OK), `deploy` (production — waits for user OK).
+Skills: `local-dev` (run/debug locally), `tdd` (the loop above), `preflight`
+(pre-release audit), `build-apk` (device builds — waits for user OK), `deploy`
+(production — waits for user OK).
