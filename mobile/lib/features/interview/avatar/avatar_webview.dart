@@ -28,7 +28,7 @@ import '../../session/voice_session_controller.dart';
 class AvatarWebView extends ConsumerStatefulWidget {
   const AvatarWebView({
     super.key,
-    this.label = 'Rais',
+    this.label = 'Alomat',
     this.level = 0,
     this.speaking = false,
   });
@@ -235,7 +235,7 @@ class _Placeholder extends StatelessWidget {
                 if (!compact) ...[
                   const SizedBox(height: 10),
                   Text(
-                    error ? 'Avatar yuklanmadi' : label,
+                    error ? 'Avatar failed to load' : label,
                     style: theme.textTheme.titleMedium,
                   ),
                 ],

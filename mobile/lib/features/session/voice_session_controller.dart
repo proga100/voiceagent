@@ -166,7 +166,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
     if (!granted) {
       state = state.copyWith(
         state: SessionState.error,
-        errorMessage: 'Mikrofon uchun ruxsat berilmadi',
+        errorMessage: 'Microphone permission denied',
       );
       return;
     }
@@ -438,7 +438,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
       case SocketConnectionState.failed:
         state = state.copyWith(
           state: SessionState.error,
-          errorMessage: 'Ulanish uzildi',
+          errorMessage: 'Connection lost',
         );
     }
   }
@@ -465,7 +465,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         _flushPlayback();
         transcript.onAgentDone();
       case ErrorEvent(:final code, :final message):
-        transcript.addSystem('Xatolik: $message ($code)');
+        transcript.addSystem('Error: $message ($code)');
       case SttCorrected(:final text, :final orig):
         transcript.correctFarmer(orig, text);
       case ToolRequestPhoto(:final callId, :final targetPart, :final reason):
@@ -474,7 +474,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
         // the farmer opens the camera when the agent has finished speaking. A
         // new request simply replaces the pending one; the transcript notice
         // stays as the durable record of the ask.
-        transcript.addSystem('Rasm kerak: $targetPart — $reason');
+        transcript.addSystem('Photo needed: $targetPart — $reason');
         ref
             .read(pendingPhotoRequestProvider.notifier)
             .set(callId: callId, targetPart: targetPart, reason: reason);
@@ -487,10 +487,10 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
           // system notice here.
           pending.completer.complete(count);
         } else {
-          transcript.addSystem('Rasm qabul qilindi ($count)');
+          transcript.addSystem('Photo received ($count)');
         }
       case DiagnosisStarted():
-        transcript.addSystem('Tashxis boshlandi…');
+        transcript.addSystem('Diagnosis started…');
       case CaseDiagnosis(
         :final caseId,
         :final result,
@@ -560,7 +560,7 @@ class VoiceSessionController extends Notifier<SessionSnapshot> {
       _micStarted = false;
       state = state.copyWith(
         state: SessionState.error,
-        errorMessage: 'Mikrofonni ishga tushirib bo\'lmadi',
+        errorMessage: "Couldn't start the microphone",
       );
     }
   }

@@ -23,7 +23,7 @@ class PlantDoctorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rais',
+      title: 'Alomat',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

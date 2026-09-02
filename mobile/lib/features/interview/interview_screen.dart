@@ -186,7 +186,7 @@ class _InterviewScreenState extends ConsumerState<InterviewScreen> {
                                     textInputAction: TextInputAction.send,
                                     onSubmitted: (_) => _sendTyped(),
                                     decoration: InputDecoration(
-                                      hintText: 'Xabar yozing…',
+                                      hintText: 'Type a message…',
                                       isDense: true,
                                       contentPadding:
                                           const EdgeInsets.symmetric(
@@ -204,7 +204,7 @@ class _InterviewScreenState extends ConsumerState<InterviewScreen> {
                                 const SizedBox(width: 8),
                                 IconButton.filled(
                                   onPressed: _sendTyped,
-                                  tooltip: 'Yuborish',
+                                  tooltip: 'Send',
                                   icon: const Icon(Icons.send),
                                 ),
                               ],
@@ -320,17 +320,17 @@ class _EmptyHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final (title, body) = switch (state) {
       SessionState.connecting => (
-        'Rais bilan suhbat boshlanmoqda…',
-        'Bir lahza kuting.',
+        'Starting conversation…',
+        'Just a moment.',
       ),
       SessionState.live => (
-        'Rais sizni eshitishga tayyor',
-        'Javob berish uchun pastdagi tugmani bosib turing va gapiring. '
-            'Qo\'yib yuborsangiz — Rais javob beradi.',
+        'Ready to listen',
+        'Hold the button below and speak. '
+            'Release to let Alomat reply.',
       ),
       _ => (
-        'Suhbat tugadi',
-        'Yangi suhbat uchun «Qayta boshlash» tugmasini bosing.',
+        'Conversation ended',
+        'Tap "Reconnect" to start a new session.',
       ),
     };
     return Center(
@@ -374,16 +374,16 @@ class _StatusChip extends StatelessWidget {
     late final Color color;
     switch (state) {
       case SessionState.disconnected:
-        label = 'Ulanmagan';
+        label = 'Disconnected';
         color = theme.colorScheme.outline;
       case SessionState.connecting:
-        label = 'Ulanmoqda…';
+        label = 'Connecting…';
         color = Colors.amber;
       case SessionState.live:
-        label = 'Jonli efirda';
+        label = 'Live';
         color = Colors.greenAccent;
       case SessionState.error:
-        label = error ?? 'Xatolik';
+        label = error ?? 'Error';
         color = theme.colorScheme.error;
     }
     return Padding(
@@ -610,7 +610,7 @@ class _Controls extends StatelessWidget {
             onPressed: onCamera,
             iconSize: 28,
             padding: const EdgeInsets.all(16),
-            tooltip: 'Rasm olish',
+            tooltip: 'Take a photo',
             icon: const Icon(Icons.photo_camera),
           ),
           const SizedBox(width: 8),
@@ -619,7 +619,7 @@ class _Controls extends StatelessWidget {
             onPressed: onToggleText,
             iconSize: 24,
             padding: const EdgeInsets.all(14),
-            tooltip: 'Yozib yuborish',
+            tooltip: 'Type a message',
             isSelected: textMode,
             icon: Icon(textMode ? Icons.keyboard_hide : Icons.keyboard),
           ),
@@ -629,7 +629,7 @@ class _Controls extends StatelessWidget {
             onPressed: onToggleMute,
             iconSize: 24,
             padding: const EdgeInsets.all(14),
-            tooltip: muted ? 'Ovozni yoqish' : 'Ovozni oʻchirish',
+            tooltip: muted ? 'Unmute agent' : 'Mute agent',
             isSelected: muted,
             icon: Icon(muted ? Icons.volume_off : Icons.volume_up),
           ),
@@ -649,7 +649,7 @@ class _Controls extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.refresh),
-                    label: Text(busy ? 'Ulanmoqda…' : 'Qayta boshlash'),
+                    label: Text(busy ? 'Connecting…' : 'Reconnect'),
                   ),
           ),
           if (live) ...[
@@ -658,7 +658,7 @@ class _Controls extends StatelessWidget {
               onPressed: onEnd,
               iconSize: 24,
               padding: const EdgeInsets.all(14),
-              tooltip: 'Suhbatni tugatish',
+              tooltip: 'End call',
               style: IconButton.styleFrom(
                 backgroundColor: theme.colorScheme.errorContainer,
                 foregroundColor: theme.colorScheme.onErrorContainer,
@@ -725,7 +725,7 @@ class _PttButton extends StatelessWidget {
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Gapiring…',
+                    'Speak…',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: theme.colorScheme.onError,
@@ -798,7 +798,7 @@ class _PhotoCtaBanner extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Rasm olish',
+                          'Take a photo',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.w700,
@@ -817,7 +817,7 @@ class _PhotoCtaBanner extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: onDismiss,
-                    tooltip: 'Bekor qilish',
+                    tooltip: 'Dismiss',
                     color: theme.colorScheme.onPrimaryContainer.withValues(
                       alpha: 0.7,
                     ),
@@ -836,23 +836,23 @@ class _PhotoCtaBanner extends StatelessWidget {
   static String _partHint(String targetPart) {
     switch (targetPart) {
       case 'leaf':
-        return 'Bargni suratga oling';
+        return 'Photograph the leaf';
       case 'fruit':
-        return 'Mevani suratga oling';
+        return 'Photograph the fruit';
       case 'stem':
       case 'branch':
       case 'bark':
-        return 'Poyani suratga oling';
+        return 'Photograph the stem';
       case 'root':
-        return 'Ildizni suratga oling';
+        return 'Photograph the root';
       case 'soil':
-        return 'Tuproqni suratga oling';
+        return 'Photograph the soil';
       case 'flower':
-        return 'Gulni suratga oling';
+        return 'Photograph the flower';
       case 'whole_plant':
-        return 'Butun oʻsimlikni suratga oling';
+        return 'Photograph the whole plant';
       default:
-        return 'Oʻsimlikni suratga oling';
+        return 'Photograph the plant';
     }
   }
 }

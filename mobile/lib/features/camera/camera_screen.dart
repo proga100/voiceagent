@@ -70,14 +70,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     final status = await Permission.camera.request();
     if (!mounted) return;
     if (!status.isGranted) {
-      _abort('Kamera ruxsati berilmadi');
+      _abort('Camera permission denied');
       return;
     }
 
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        _abort('Kamera topilmadi');
+        _abort('No camera found');
         return;
       }
       final back = cameras.firstWhere(
@@ -119,7 +119,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       if (!mounted) return;
       setState(() => _streaming = true);
     } catch (_) {
-      _abort('Kamerani ochib boʻlmadi');
+      _abort("Couldn't open camera");
     }
   }
 
@@ -164,7 +164,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       _capturing = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Suratga olishda xatolik')),
+          const SnackBar(content: Text('Failed to take photo')),
         );
       }
     }
@@ -204,7 +204,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_reasonHint(reason)),
-          action: SnackBarAction(label: 'Baribir yuborish', onPressed: proceed),
+          action: SnackBarAction(label: 'Send anyway', onPressed: proceed),
         ),
       );
       return;
@@ -269,7 +269,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     final String hint;
     if (!_streaming) {
       borderColor = Colors.white54;
-      hint = 'Tayyorlanmoqda…';
+      hint = 'Getting ready…';
     } else if (green) {
       borderColor = Colors.greenAccent;
       hint = _framingHint(widget.targetPart);
@@ -342,13 +342,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
                     children: [
                       _RoundButton(
                         icon: Icons.photo_library_outlined,
-                        tooltip: 'Galereyadan tanlash',
+                        tooltip: 'Pick from gallery',
                         onPressed: _pickFromGallery,
                       ),
                       _ShutterButton(onPressed: _capture),
                       _RoundButton(
                         icon: Icons.close,
-                        tooltip: 'Bekor qilish',
+                        tooltip: 'Cancel',
                         onPressed: _cancel,
                       ),
                     ],
@@ -365,38 +365,38 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   static String _framingHint(String targetPart) {
     switch (targetPart) {
       case 'leaf':
-        return 'Bargni yaqindan koʻrsating';
+        return 'Show the leaf up close';
       case 'fruit':
-        return 'Mevani yaqindan koʻrsating';
+        return 'Show the fruit up close';
       case 'stem':
       case 'branch':
       case 'bark':
-        return 'Poyani yaqindan koʻrsating';
+        return 'Show the stem up close';
       case 'root':
-        return 'Ildizni koʻrsating';
+        return 'Show the root';
       case 'soil':
-        return 'Tuproqni koʻrsating';
+        return 'Show the soil';
       case 'whole_plant':
-        return 'Butun oʻsimlikni koʻrsating';
+        return 'Show the whole plant';
       case 'flower':
-        return 'Gulni yaqindan koʻrsating';
+        return 'Show the flower up close';
       default:
-        return 'Oʻsimlikni koʻrsating';
+        return 'Show the plant';
     }
   }
 
   static String _reasonHint(String? reason) {
     switch (reason) {
       case 'blur':
-        return 'Telefonni qimirlatmang';
+        return 'Hold the phone steady';
       case 'too_dark':
-        return 'Juda qorongʻi — yorugʻroq joyga oʻting';
+        return 'Too dark — move to a brighter spot';
       case 'too_bright':
-        return 'Juda yorugʻ — soyaga oʻting';
+        return 'Too bright — move to the shade';
       case 'no_plant':
-        return 'Oʻsimlikka qarating';
+        return 'Point at the plant';
       default:
-        return 'Kamerani oʻsimlikka toʻgʻrilang';
+        return 'Aim the camera at the plant';
     }
   }
 }
@@ -465,7 +465,7 @@ class _ShutterButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Suratga olish',
+      label: 'Take photo',
       child: GestureDetector(
         onTap: onPressed,
         behavior: HitTestBehavior.opaque,

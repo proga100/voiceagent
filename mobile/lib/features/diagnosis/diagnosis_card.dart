@@ -66,11 +66,11 @@ class DiagnosisCard extends StatelessWidget {
   String _confidenceLabel() {
     switch (result.confidence) {
       case 'high':
-        return 'Yuqori ishonch';
+        return 'High confidence';
       case 'medium':
-        return 'Oʻrta ishonch';
+        return 'Medium confidence';
       case 'low':
-        return 'Past ishonch';
+        return 'Low confidence';
       default:
         return result.confidence;
     }
@@ -104,9 +104,8 @@ class DiagnosisCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Tashxis suhbat asosida qoʻyildi — rasm yaroqsiz boʻlgani '
-                      'uchun hisobga olinmadi. Toʻgʻri rasm yuborsangiz, '
-                      'aniqroq tashxis beramiz.',
+                      'Diagnosis based on conversation — the photo was unusable '
+                      'and was not considered. A proper photo would sharpen the result.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -129,7 +128,7 @@ class DiagnosisCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     result.likelyDisease.isEmpty
-                        ? 'Tashxis'
+                        ? 'Diagnosis'
                         : result.likelyDisease,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -176,7 +175,7 @@ class DiagnosisCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Boshqa ehtimollar',
+                    'Other possibilities',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.outline,
                     ),
@@ -205,7 +204,7 @@ class DiagnosisCard extends StatelessWidget {
           // Treatment / prevention sections.
           if (result.immediateTreatment.isNotEmpty)
             _BulletSection(
-              title: 'Darhol qilinadigan ishlar',
+              title: 'Immediate treatment',
               icon: Icons.healing,
               iconColor: Colors.green,
               items: result.immediateTreatment,
@@ -213,7 +212,7 @@ class DiagnosisCard extends StatelessWidget {
             ),
           if (result.prevention.isNotEmpty)
             _BulletSection(
-              title: 'Oldini olish',
+              title: 'Prevention',
               icon: Icons.shield_outlined,
               iconColor: theme.colorScheme.primary,
               items: result.prevention,
@@ -279,8 +278,8 @@ class _NotAPlantCard extends StatelessWidget {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.outline;
     final message = result.spokenSummary.isEmpty
-        ? 'Rasmda oʻsimlik koʻrinmadi. Iltimos, kasallangan qismini '
-              'yaqindan suratga oling.'
+        ? 'No plant visible in the photo. Please take a close-up of the '
+              'affected part.'
         : result.spokenSummary;
 
     return Card(
@@ -406,7 +405,7 @@ class PreparationsSection extends StatelessWidget {
   const PreparationsSection({
     super.key,
     required this.preparations,
-    this.title = 'Tavsiya etilgan preparatlar',
+    this.title = 'Recommended preparations',
   });
 
   final List<Preparation> preparations;
@@ -417,11 +416,11 @@ class PreparationsSection extends StatelessWidget {
   static (String, Color)? _badge(String type) {
     switch (type) {
       case 'disease':
-        return ('Kasallik', Colors.deepOrange);
+        return ('Disease', Colors.deepOrange);
       case 'pest':
-        return ('Zararkunanda', Colors.brown);
+        return ('Pest', Colors.brown);
       case 'weed':
-        return ('Begona oʻt', Colors.teal);
+        return ('Weed', Colors.teal);
       default:
         return null;
     }
@@ -512,7 +511,7 @@ class PreparationsSection extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      'Doza: ${_fmtDose(p)}',
+                      'Dose: ${_fmtDose(p)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.outline,
                       ),
@@ -534,7 +533,7 @@ class PreparationsSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
           child: Text(
-            'Growz Agroaptekasidan xarid qilishingiz mumkin.',
+            'Available for purchase from Growz Agroapteka.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.outline,
             ),
@@ -567,7 +566,7 @@ class _PhotoPreviewRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (selected.isNotEmpty) ...[
-            Text('Tahlilga olingan rasmlar', style: labelStyle),
+            Text('Photos analysed', style: labelStyle),
             const SizedBox(height: 6),
             SizedBox(
               height: 72,
@@ -582,7 +581,7 @@ class _PhotoPreviewRow extends StatelessWidget {
           ],
           if (kept.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('Saqlangan rasmlar', style: labelStyle),
+            Text('Stored photos', style: labelStyle),
             const SizedBox(height: 6),
             SizedBox(
               height: 72,
@@ -701,7 +700,7 @@ class _PhotoViewer extends StatelessWidget {
     final conf = photo.perImageAnalysis['confidence']?.toString() ?? '';
     final caption = [
       if (organ.isNotEmpty) organ,
-      if (conf.isNotEmpty) 'ishonch: $conf',
+      if (conf.isNotEmpty) 'confidence: $conf',
     ].join(' · ');
 
     return Scaffold(

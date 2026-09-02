@@ -184,7 +184,7 @@ class _ConfirmOverlayState extends ConsumerState<ConfirmOverlay>
             ),
             SizedBox(height: 16),
             Text(
-              'Yuborilmoqda...',
+              'Sending…',
               style: TextStyle(color: Colors.white, fontSize: 16),
             ),
           ],
@@ -196,7 +196,7 @@ class _ConfirmOverlayState extends ConsumerState<ConfirmOverlay>
             const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
             const SizedBox(height: 12),
             const Text(
-              'Yuborishda xatolik',
+              'Send failed',
               style: TextStyle(color: Colors.white, fontSize: 16),
             ),
             const SizedBox(height: 16),
@@ -206,13 +206,13 @@ class _ConfirmOverlayState extends ConsumerState<ConfirmOverlay>
                 FilledButton.icon(
                   onPressed: _upload,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Qayta yuborish'),
+                  label: const Text('Retry'),
                 ),
                 TextButton(
                   onPressed: () =>
                       ref.read(appModeProvider.notifier).toInterview(),
                   child: const Text(
-                    'Bekor qilish',
+                    'Cancel',
                     style: TextStyle(color: Colors.white70),
                   ),
                 ),

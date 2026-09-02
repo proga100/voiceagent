@@ -34,14 +34,14 @@ class CropPickScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Qaysi ekin haqida gaplashamiz?',
+                    'Which crop shall we talk about?',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Ekinni tanlang — Rais siz bilan shu ekin ustida suhbatlashadi.',
+                    'Select a crop — Alomat will focus the conversation on it.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -92,7 +92,7 @@ class _CropPickListState extends ConsumerState<CropPickList> {
             onChanged: (v) => setState(() => _query = v.trim()),
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Ekin qidirish…',
+              hintText: 'Search crops…',
               prefixIcon: const Icon(Icons.search),
               filled: true,
               isDense: true,
@@ -146,7 +146,7 @@ class _CropRows extends StatelessWidget {
     if (crops.isEmpty) {
       return Center(
         child: Text(
-          'Hech narsa topilmadi',
+          'Nothing found',
           style: theme.textTheme.bodyLarge?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -218,9 +218,9 @@ class _ErrorState extends StatelessWidget {
         children: [
           Icon(Icons.cloud_off, size: 48, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(height: 12),
-          Text('Ekinlar roʻyxati yuklanmadi', style: theme.textTheme.titleMedium),
+          Text("Couldn't load crops", style: theme.textTheme.titleMedium),
           const SizedBox(height: 12),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('Qayta urinish')),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );
