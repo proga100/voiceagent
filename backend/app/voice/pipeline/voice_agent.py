@@ -29,7 +29,7 @@ from app.voice.pipeline.memory import (
     valid_device_id,
 )
 from app.voice.enrich import build_session_enrichment, get_tenant_crops
-from app.voice.pipeline.prompts import load_system_prompt
+from app.voice.pipeline.prompts import ENGLISH_GREETING_KICKOFF, load_system_prompt
 from app.voice.pipeline.streaming_session import StreamingSession
 from app.voice.providers.factory import (
     build_auth,
@@ -434,6 +434,12 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     elif mem_store is not None and mem_kickoff:
                         # Alomat speaks first: onboarding intro or greeting.
                         await session.speak_system(mem_kickoff)
+                    elif getattr(settings, "is_english", False) and hasattr(session, "speak_system"):
+                        # English demo mode: no memory kickoff is produced (the
+                        # is_english guard above skips the whole memory block),
+                        # so we emit a dedicated English-language opening so the
+                        # agent speaks first instead of waiting silently.
+                        await session.speak_system(ENGLISH_GREETING_KICKOFF)
                     # Dev repro harness — inert unless DEBUG_AUTOPILOT=1.
                     if os.environ.get("DEBUG_AUTOPILOT") == "1":
                         from app.voice.pipeline.dev_autopilot import run_dev_autopilot

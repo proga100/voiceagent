@@ -116,6 +116,17 @@ TOOL_INSTRUCTIONS_EN = (
 )
 
 
+# Opening instruction voiced by the model at session start in English mode.
+# Mirrors the pattern used by memory.py's _ONBOARDING_KICKOFF: a short
+# system instruction that the model turns into its first spoken utterance.
+# Must not contain Uzbek words — the test checks for their absence.
+ENGLISH_GREETING_KICKOFF = (
+    "Start the conversation: greet the farmer briefly, introduce yourself — "
+    "'I'm Rais, an AI agronomist from Growz AI' — and ask how you can help "
+    "with their crops today. Keep it to 1-2 short sentences."
+)
+
+
 def load_system_prompt(settings: Settings) -> str:
     """Voice-agent system prompt: the tunable file if present, else the constant.
 
