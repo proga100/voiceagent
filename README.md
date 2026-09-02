@@ -28,3 +28,21 @@ Uzbek). Gated by `ENABLE_CASE_TOOLS` (off = plain voice agent).
   its "Case tools (test)" panel exercises the photo/diagnosis protocol.
 - Probe scripts: `backend/app/voice/benchmark/poc_live_tools.py` documents the
   Live-API tool/image mechanics (photos must use the `video` realtime channel).
+
+## Claude Code workspace
+
+The repo ships a multi-agent Claude Code setup ([CLAUDE.md](CLAUDE.md) has the
+full workflow):
+
+- **Agents** (`.claude/agents/`): `architect` (read-only plans),
+  `tdd-tester` (failing test first), `backend-python` and `flutter-mobile`
+  (implementation), `code-reviewer` (diff review), `security-reviewer`
+  (auth / uploads / PII audit).
+- **Skills** (`.claude/skills/`): `local-dev`, `tdd`, `build-apk`, `deploy`.
+- **Hooks** (`.claude/hooks/`): guard against dangerous commands and staging
+  secrets, auto-run related tests after every edit, and block finishing a
+  session while the test suite is red.
+
+Development follows TDD: red (failing test) → green (minimal implementation) →
+refactor → review, with `cd backend && pytest` and
+`cd mobile && flutter test` as the gates.

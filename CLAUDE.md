@@ -127,3 +127,27 @@ keys ship in the APK.
   `mobile/test/` mirror `lib/` names (`jitter_buffer_test.dart` ↔ `jitter_buffer.dart`).
 - UI copy is Uzbek (Latin); Cyrillic transliteration exists for guided-flow
   prompts and labels — keep both in sync when adding strings.
+
+## Agent team & TDD workflow
+
+Subagents live in `.claude/agents/`, skills in `.claude/skills/`. Delegate by
+role instead of doing cross-cutting work inline:
+
+| Agent | Role | When |
+|---|---|---|
+| `architect` | read-only implementation plans (opus) | before any multi-file / cross-layer change |
+| `tdd-tester` | writes the failing test first, red → green | start of every feature; regression test for every bug |
+| `backend-python` | FastAPI / pipeline / providers implementation | backend code + pytest |
+| `flutter-mobile` | Flutter client implementation | mobile code + widget/unit tests |
+| `code-reviewer` | diff review: correctness, protocol drift, secrets | after changes, before every commit |
+| `security-reviewer` | auth / photo pipeline / PII / public-repo hygiene | before releases; after touching auth or uploads |
+
+**TDD is the default loop** (see the `tdd` skill): architect plans →
+tdd-tester writes the failing test → specialist implements the minimal green →
+refactor on a green suite → code-reviewer (plus security-reviewer when auth,
+photos, or external URLs changed) → commit. The hooks enforce the loop:
+`run-related-tests.sh` re-runs tests after each edit and
+`block-finish-on-red.sh` refuses to end a session with a red suite.
+
+Skills: `local-dev` (run/debug locally), `tdd` (the loop above), `build-apk`
+(device builds — waits for user OK), `deploy` (production — waits for user OK).
