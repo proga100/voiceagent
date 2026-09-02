@@ -11,3 +11,14 @@ node_modules/
 # Per-farmer memory profiles (runtime data, never committed).
 data/
 backend/data/
+
+# --- Claude Code: per-machine permissions stay local ---
+.claude/settings.local.json
+
+# --- Secrets / artifacts that must never land in this repo ---
+gcloud-sa.json
+*.apk
+*.ipa
+mobile/build/
+mobile/android/build/
+mobile/.dart_tool/

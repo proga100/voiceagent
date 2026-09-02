@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "voiceagent-api": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ivotoby/openapi-mcp-server",
+        "--api-base-url", "http://127.0.0.1:8012",
+        "--openapi-spec", "./docs/openapi.json"
+      ],
+      "env": {
+        "API_BASE_URL": "http://127.0.0.1:8012",
+        "OPENAPI_SPEC_PATH": "./docs/openapi.json"
+      }
+    }
+  }
+}
