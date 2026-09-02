@@ -18,7 +18,9 @@ def test_new_farmer_gets_onboarding():
     block, kickoff = build_memory_context(None, NOW)
     assert "[YANGI FERMER]" in block
     assert "telefon raqamini" in block          # phone ask with confirm
-    assert "Rais" in kickoff and "Growz AI" in kickoff
+    assert "agronom" in kickoff.lower()
+    assert "Rais" not in kickoff
+    assert "Growz" not in kickoff
     assert "ismini soʻra" in kickoff
 
 

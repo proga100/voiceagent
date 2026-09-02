@@ -1,7 +1,7 @@
-/// 2D avatar (the Rais Growz character) — a single PNG animated to feel alive.
+/// 2D avatar (Alomat — the AI agronomist character) — a single PNG animated to feel alive.
 ///
 /// No WebView, no GLB, no real lipsync: instead the image gently "breathes"
-/// while idle and pulses / bobs while Rais speaks. The speech energy is the
+/// while idle and pulses / bobs while the agent speaks. The speech energy is the
 /// SAME signal the old three.js avatar used — `analyzer.frameAt(playback
 /// positionMs).open` (0..1 mouth-openness from the agent-audio lipsync FIFO) —
 /// so the motion tracks the actual voice, just as a whole-body pulse rather

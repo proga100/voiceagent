@@ -624,7 +624,7 @@ class _Controls extends StatelessWidget {
             icon: Icon(textMode ? Icons.keyboard_hide : Icons.keyboard),
           ),
           const SizedBox(width: 8),
-          // Mute/unmute Rais's voice — text keeps flowing, only audio is off.
+          // Mute/unmute the agent's voice — text keeps flowing, only audio is off.
           IconButton.filledTonal(
             onPressed: onToggleMute,
             iconSize: 24,

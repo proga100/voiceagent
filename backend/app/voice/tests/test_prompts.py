@@ -48,12 +48,15 @@ def test_disabled_never_appends_policy(tmp_path):
     assert TOOL_INSTRUCTIONS_UZ not in out
 
 
-def test_identity_is_rais_growz_ai():
-    # She must introduce itself as Rais — the Growz AI agronomist — in both
-    # the constant and the shipped prompt file.
-    assert "Rais" in AGRICULTURE_SYSTEM_PROMPT_UZ
-    assert "Growz AI" in AGRICULTURE_SYSTEM_PROMPT_UZ
+def test_identity_is_generic_ai_agronomist():
+    # The agent must present itself as a generic AI agronomist — no given name
+    # ("Rais") and no company ("Growz") in the constant or the shipped prompt file.
+    assert "agronom" in AGRICULTURE_SYSTEM_PROMPT_UZ.lower()
+    assert "Rais" not in AGRICULTURE_SYSTEM_PROMPT_UZ
+    assert "Growz" not in AGRICULTURE_SYSTEM_PROMPT_UZ
     from pathlib import Path
     shipped = Path(__file__).resolve().parents[3] / "prompts" / "voice_agent.md"
     text = shipped.read_text(encoding="utf-8")
-    assert "Rais" in text and "Growz AI" in text
+    assert "agronom" in text.lower()
+    assert "Rais" not in text
+    assert "Growz" not in text

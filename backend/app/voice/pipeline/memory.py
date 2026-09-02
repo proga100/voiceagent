@@ -225,9 +225,8 @@ _ONBOARDING_BLOCK = (
 )
 
 _ONBOARDING_KICKOFF = (
-    "Suhbatni sen boshla: qisqa salomlash, oʻzingni tanishtir — «Men Rais — "
-    "Growz AI kompaniyasining sunʼiy intellekt agronomiman» — va fermerdan "
-    "ismini soʻra. Koʻpi bilan 2 qisqa jumla."
+    "Suhbatni sen boshla: qisqa salomlash, oʻzingni sunʼiy intellekt agronom "
+    "sifatida tanishtir va fermerdan ismini soʻra. Koʻpi bilan 2 qisqa jumla."
 )
 
 

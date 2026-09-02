@@ -31,7 +31,7 @@ class DiagnosisCard extends StatelessWidget {
 
   final DiagnosisResult result;
 
-  /// Growz Agroapteka preparations for [result.likelyDisease] (contract
+  /// Recommended preparations for [result.likelyDisease] (contract
   /// addendum P2.1/P2.8). Rendered only on the full-card path, never inside
   /// [_NotAPlantCard]; the section itself hides when this is empty.
   final List<Preparation> preparations;
@@ -393,7 +393,7 @@ class _BulletSection extends StatelessWidget {
   }
 }
 
-/// "Tavsiya etilgan preparatlar" — Growz Agroapteka lookup results for
+/// "Tavsiya etilgan preparatlar" — recommended preparations for
 /// [DiagnosisResult.likelyDisease] (contract addendum P2.8). Always visible
 /// (not an `ExpansionTile`): the preparations are the payoff of the
 /// diagnosis, not a collapsible aside. No button/link — the Marketplace
@@ -533,7 +533,7 @@ class PreparationsSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
           child: Text(
-            'Available for purchase from Growz Agroapteka.',
+            'Recommended treatments are available at local agricultural stores.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.outline,
             ),
