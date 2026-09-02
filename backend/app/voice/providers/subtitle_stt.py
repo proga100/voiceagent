@@ -91,7 +91,7 @@ class GoogleChirpSTT:
                 sample_rate_hertz=sample_rate,
                 audio_channel_count=1,
             ),
-            language_codes=[self._s.google_stt_language],
+            language_codes=[self._s.effective_stt_language],
             model=self._s.google_stt_model,
             features=cloud_speech.RecognitionFeatures(
                 enable_automatic_punctuation=True

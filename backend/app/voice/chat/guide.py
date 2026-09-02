@@ -1289,7 +1289,7 @@ class ChatGuide:
         summary = {
             "crop": d.crop_name,
             "symptoms": d.symptom_summary,
-            "farmer_language": "uz",
+            "farmer_language": "en" if self._s.is_english else "uz",
         }
         if d.plant_part:
             summary["location_on_plant"] = _label_for("plant_part", d.plant_part) or d.plant_part

@@ -236,9 +236,12 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     # the voice comes from settings.gemini_live_voice — which
                     # may carry an "azure:<neural-voice>" prefix. Nothing the
                     # client sends is read here any more.
-                    cfg_voice = getattr(settings, "gemini_live_voice", None)
-                    if cfg_voice and hasattr(session, "set_voice"):
-                        session.set_voice(cfg_voice)
+                    # In English mode never pass an azure:-prefixed voice token;
+                    # effective_live_voice already returns "Charon" unconditionally.
+                    if not getattr(settings, "is_english", False):
+                        cfg_voice = getattr(settings, "effective_live_voice", None)
+                        if cfg_voice and hasattr(session, "set_voice"):
+                            session.set_voice(cfg_voice)
                     # Reply-script switch (before connect): language="uz-Cyrl"
                     # -> the agent answers in Uzbek Cyrillic. Only the agent's
                     # free speech/text switches; button labels stay Latin.
@@ -259,7 +262,8 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                         session.photo_user_id = user_id
                     chat_id = (event.get("chat_id") or "").strip()
                     if (
-                        getattr(settings, "chats_enabled", False)
+                        not getattr(settings, "is_english", False)
+                        and getattr(settings, "chats_enabled", False)
                         and chat_id
                         and valid_device_id(user_id)
                         and hasattr(session, "set_tool_extension")
@@ -349,9 +353,13 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     # Per-farmer memory: load the profile and extend the system
                     # prompt BEFORE the Live connection opens. Any failure →
                     # memoryless session, never a broken one.
+                    # English demo mode: skip memory/enrich/guided-flow context
+                    # injection; the session runs as a free English plant-doctor
+                    # conversation (case tools still attached).
                     mem_kickoff = ""
                     if (
-                        getattr(settings, "memory_enabled", False)
+                        not getattr(settings, "is_english", False)
+                        and getattr(settings, "memory_enabled", False)
                         and hasattr(session, "set_memory")
                         and valid_device_id(user_id)
                     ):
@@ -397,8 +405,11 @@ async def run_voice_agent(websocket: WebSocket, settings: Settings, session_id: 
                     # resumed chat's own crop is the fallback when the client
                     # sends none (a brand-new chat has no crop yet — the guide
                     # picks it later).
-                    if getattr(settings, "enrich_enabled", False) and hasattr(
-                        session, "set_memory"
+                    # English demo mode: skip Uzbek enrichment context injection.
+                    if (
+                        not getattr(settings, "is_english", False)
+                        and getattr(settings, "enrich_enabled", False)
+                        and hasattr(session, "set_memory")
                     ):
                         try:
                             crop_name = (event.get("crop_name") or "").strip()

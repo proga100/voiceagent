@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     # chirp_3 (latest, best uz-UZ) is served ONLY from the multi-region
     # endpoints "eu"/"us" — NOT specific regions or "global". The recognizer
     # path + endpoint properties below turn region="eu" into
-    # eu-speech.googleapis.com automatically.
+    # eu-speech.googleapis.com automatically. The "eu" endpoint also serves
+    # en-US, so the AGENT_LANGUAGE=en-US demo needs no region change — do NOT
+    # switch to "us" for the English demo or the Uzbek path degrades.
     google_stt_region: str = "eu"
     google_stt_language: str = "uz-UZ"
     google_stt_model: str = "chirp_3"
@@ -94,6 +96,16 @@ class Settings(BaseSettings):
     # Male, to match the uz-UZ-SardorNeural voice this falls back from. Other
     # male options: Puck, Fenrir, Orus (Aoede/Kore/Leda are female).
     gemini_live_voice: str = "Charon"
+
+    # ---- Demo language override ----
+    # "uz-UZ" (default) = production Uzbek — byte-identical to the old behaviour,
+    # all effective_* properties mirror the existing Uzbek fields. "en-US" flips
+    # the whole agent to English for a stakeholder demo: uses Gemini's own Charon
+    # voice (never azure:-prefixed), ignores the Uzbek prompt file, skips the
+    # guided anketa, and runs as a free English plant-doctor conversation (case
+    # tools still attached). Revert by unsetting AGENT_LANGUAGE on the server
+    # .env and restarting the container — no code change, no APK rebuild.
+    agent_language: Literal["uz-UZ", "en-US"] = "uz-UZ"
 
     # ---- Transparent session resumption ----
     # Gemini Live enforces a session duration limit and closes the socket
@@ -296,6 +308,31 @@ class Settings(BaseSettings):
     # ---- App auth / CORS ----
     voice_api_token: str = "change-me-dev-token"
     cors_origins: str = "http://localhost:3000"
+
+    @property
+    def is_english(self) -> bool:
+        """True when AGENT_LANGUAGE=en-US (stakeholder demo mode)."""
+        return self.agent_language == "en-US"
+
+    @property
+    def effective_live_language(self) -> str:
+        """Language code used for the Gemini Live speech config.
+        en-US demo mode → "en-US"; otherwise the production Uzbek setting."""
+        return "en-US" if self.is_english else self.gemini_live_language
+
+    @property
+    def effective_stt_language(self) -> str:
+        """Language code used by the subtitle Chirp 3 scribe.
+        en-US demo mode → "en-US"; otherwise the production Uzbek setting."""
+        return "en-US" if self.is_english else self.google_stt_language
+
+    @property
+    def effective_live_voice(self) -> str:
+        """Gemini Live timbre name to use. In English mode Charon is picked
+        unconditionally — it speaks English cleanly and is never azure:-prefixed
+        (Azure Neural TTS has no English-mode role). In Uzbek mode the configured
+        gemini_live_voice is returned unchanged (may be azure:-prefixed)."""
+        return "Charon" if self.is_english else self.gemini_live_voice
 
     @property
     def cors_origin_list(self) -> list[str]:

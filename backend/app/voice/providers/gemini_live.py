@@ -64,14 +64,14 @@ def _live_config(
     # prompted in Uzbek); half-cascade models additionally honour language_code.
     voice_cfg = types.VoiceConfig(
         prebuilt_voice_config=types.PrebuiltVoiceConfig(
-            voice_name=voice or settings.gemini_live_voice
+            voice_name=voice or settings.effective_live_voice
         )
     )
     if "native-audio" in settings.gemini_live_model:
         cfg["speech_config"] = types.SpeechConfig(voice_config=voice_cfg)
     else:
         cfg["speech_config"] = types.SpeechConfig(
-            language_code=settings.gemini_live_language,
+            language_code=settings.effective_live_language,
             voice_config=voice_cfg,
         )
 
@@ -249,7 +249,7 @@ class GeminiLiveSession:
         self._system_prompt = system_prompt
         self._session_id = session_id
         self._input_sample_rate = settings.audio_input_sample_rate_hz
-        self._voice = settings.gemini_live_voice
+        self._voice = settings.effective_live_voice
         self._azure_mode = False
         # Agent-voice mute: when True, outbound audio frames (Gemini native AND
         # Azure) are dropped — the farmer still gets text/transcription. Toggled

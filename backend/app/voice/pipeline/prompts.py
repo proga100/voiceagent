@@ -82,15 +82,59 @@ CYRILLIC_REPLY_DIRECTIVE = (
 )
 
 
+AGRICULTURE_SYSTEM_PROMPT_EN = (
+    "You are Rais, an AI agronomist created by Growz AI. "
+    "You help farmers diagnose plant diseases and pests. "
+    "This is a phone call — speak naturally, keep replies short and conversational. "
+    "ALWAYS reply in only 1-2 short sentences. "
+    "Do not use lists, markdown, or long explanations. "
+    "End most replies with ONE clarifying question to keep the conversation going. "
+    "If the diagnosis is unclear, ask one targeted question or request a photo. "
+    "Reply ONLY in English."
+)
+
+# English tool policy — direct port of TOOL_INSTRUCTIONS_UZ.
+# The farmer_language="en" value must match the substring assertion in tests.
+TOOL_INSTRUCTIONS_EN = (
+    "YOU HAVE TWO TOOLS (functions).\n"
+    "1) request_photo(reason, target_part): call this IMMEDIATELY when a photo "
+    "would help with the diagnosis. reason — why the photo is needed; target_part — "
+    "which part to photograph (leaf, stem, fruit, flower, root, branch, bark, "
+    "whole_plant, soil). After calling it, explain in one short sentence how to "
+    "take the photo and wait.\n"
+    "2) finalize_case(summary): during the conversation gather crop type, "
+    "disease symptoms, when it started, how far it has spread, scale of damage, "
+    "weather and irrigation conditions, and any prior treatments — one or two "
+    "short sentences at a time. When crop, symptoms, onset/spread and scale are "
+    "clear AND at least one photo has arrived, call finalize_case with a full "
+    "summary (farmer_language=\"en\").\n"
+    "IMPORTANT: a photo is MANDATORY for disease/pest/weed diagnosis. "
+    "NEVER call finalize_case until at least one photo has arrived. If the farmer "
+    "requests a diagnosis without a photo, gently explain that a photo is required "
+    "and ask for one (call request_photo if needed). No photo = no diagnosis.\n"
+    "NEVER read JSON or function names aloud — speak naturally."
+)
+
+
 def load_system_prompt(settings: Settings) -> str:
     """Voice-agent system prompt: the tunable file if present, else the constant.
 
-    Prefers ``settings.voice_agent_prompt_path`` (non-empty file) so the prompt is
-    editable without a redeploy; otherwise falls back to
-    :data:`AGRICULTURE_SYSTEM_PROMPT_UZ`. When ``settings.enable_case_tools`` is on
-    the tool policy is appended, UNLESS the file already carries the
+    English demo mode (settings.is_english): returns the English prompt
+    unconditionally, ignoring any on-disk voice_agent_prompt_path file and the
+    Uzbek constants. The Uzbek path is byte-identical to the old behaviour.
+
+    Uzbek path: prefers ``settings.voice_agent_prompt_path`` (non-empty file) so
+    the prompt is editable without a redeploy; otherwise falls back to
+    :data:`AGRICULTURE_SYSTEM_PROMPT_UZ`. When ``settings.enable_case_tools`` is
+    on the tool policy is appended, UNLESS the file already carries the
     ``<!-- tools-included -->`` marker (it then owns the full policy itself).
     """
+    if settings.is_english:
+        base = AGRICULTURE_SYSTEM_PROMPT_EN
+        if settings.enable_case_tools:
+            return base + "\n\n" + TOOL_INSTRUCTIONS_EN
+        return base
+
     base = AGRICULTURE_SYSTEM_PROMPT_UZ
     path = Path(settings.voice_agent_prompt_path)
     file_text = ""
